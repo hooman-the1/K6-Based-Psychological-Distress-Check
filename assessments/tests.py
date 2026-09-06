@@ -399,7 +399,10 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
         test_url = f"{self.live_server_url}{reverse('test')}"
         home_url = f"{self.live_server_url}{reverse('home')}"
 
-        with tempfile.TemporaryDirectory(prefix="questionnaire-browser-") as profile:
+        with tempfile.TemporaryDirectory(
+            prefix="questionnaire-browser-",
+            ignore_cleanup_errors=True,
+        ) as profile:
             browser = subprocess.Popen(
                 [
                     self.edge_path,
@@ -409,13 +412,16 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
                     f"--remote-debugging-port={debugging_port}",
                     "--remote-allow-origins=*",
                     f"--user-data-dir={profile}",
-                    "about:blank",
+                    test_url,
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             try:
-                websocket_url = self.wait_for_page_websocket(debugging_port)
+                websocket_url = self.wait_for_page_websocket(
+                    debugging_port,
+                    expected_url=test_url,
+                )
                 completed = subprocess.run(
                     [
                         self.node_path,
@@ -457,7 +463,7 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
             available_socket.bind(("127.0.0.1", 0))
             return available_socket.getsockname()[1]
 
-    def wait_for_page_websocket(self, debugging_port):
+    def wait_for_page_websocket(self, debugging_port, expected_url):
         endpoint = f"http://127.0.0.1:{debugging_port}/json/list"
         deadline = time.monotonic() + 10
 
@@ -466,7 +472,10 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
                 with urllib.request.urlopen(endpoint, timeout=1) as response:
                     targets = json.load(response)
                 page_target = next(
-                    target for target in targets if target.get("type") == "page"
+                    target
+                    for target in targets
+                    if target.get("type") == "page"
+                    and target.get("url") == expected_url
                 )
                 return page_target["webSocketDebuggerUrl"]
             except (

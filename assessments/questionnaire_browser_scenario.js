@@ -48,15 +48,41 @@ class DevToolsClient {
                 pendingMessage.resolve(message.result);
             }
         });
+        const rejectPendingMessages = () => {
+            for (const pendingMessage of this.pendingMessages.values()) {
+                pendingMessage.reject(new Error("DevTools WebSocket closed"));
+            }
+            this.pendingMessages.clear();
+        };
+        websocket.addEventListener("error", rejectPendingMessages);
+        websocket.addEventListener("close", rejectPendingMessages);
     }
 
     static async connect(url) {
-        const websocket = new WebSocket(url);
-        await new Promise((resolve, reject) => {
-            websocket.addEventListener("open", resolve, { once: true });
-            websocket.addEventListener("error", reject, { once: true });
-        });
-        return new DevToolsClient(websocket);
+        let lastError;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+            const websocket = new WebSocket(url);
+            websocket.addEventListener("error", () => {});
+            try {
+                await new Promise((resolve, reject) => {
+                    const handleOpen = () => {
+                        websocket.removeEventListener("error", handleError);
+                        resolve();
+                    };
+                    const handleError = (error) => {
+                        websocket.removeEventListener("open", handleOpen);
+                        reject(error);
+                    };
+                    websocket.addEventListener("open", handleOpen, { once: true });
+                    websocket.addEventListener("error", handleError, { once: true });
+                });
+                return new DevToolsClient(websocket);
+            } catch (error) {
+                lastError = error;
+                await delay(50);
+            }
+        }
+        throw lastError;
     }
 
     send(method, params = {}) {

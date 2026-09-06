@@ -3,57 +3,68 @@
 {% block title %}Test | K6-Based Psychological Distress Check{% endblock %}
 
 {% block content %}
-    <h1>Test</h1>
-    <form class="questionnaire" data-questionnaire autocomplete="off">
-        {% for question in questionnaire.questions %}
-            <section
-                class="questionnaire-step"
-                data-question-step="{{ forloop.counter }}"
-                {% if not forloop.first %}hidden{% endif %}
-            >
-                <p class="question-count">Question {{ forloop.counter }} of {{ questionnaire.questions|length }}</p>
-                <progress
-                    aria-label="Questionnaire progress"
-                    value="{{ forloop.counter }}"
-                    max="{{ questionnaire.questions|length }}"
-                >{{ forloop.counter }} of {{ questionnaire.questions|length }}</progress>
-                <h2>{{ question.prompt }}</h2>
-                {% if question.helper_text %}
-                    <button
-                        type="button"
-                        data-question-helper
-                        aria-expanded="false"
-                        aria-controls="question-{{ forloop.counter }}-helper"
-                    >What does this mean?</button>
-                    <p
-                        id="question-{{ forloop.counter }}-helper"
-                        data-question-helper-copy
-                        hidden
-                    >{{ question.helper_text }}</p>
-                {% endif %}
-                <fieldset class="response-options">
-                    <legend>Choose one response</legend>
-                    {% for option in questionnaire.response_options %}
-                        <label class="response-option" for="question-{{ forloop.parentloop.counter }}-option-{{ forloop.counter }}">
-                            <input
-                                id="question-{{ forloop.parentloop.counter }}-option-{{ forloop.counter }}"
-                                type="radio"
-                                name="question-{{ forloop.parentloop.counter }}"
-                                value="{{ option.value }}"
-                            >
-                            <span>{{ option.label }}</span>
-                        </label>
-                    {% endfor %}
-                </fieldset>
-                <div class="questionnaire-controls">
-                    {% if not forloop.first %}
-                        <button type="button" data-questionnaire-back>Back</button>
+    <div data-questionnaire-page>
+        <h1>Test</h1>
+        <form class="questionnaire" data-questionnaire autocomplete="off">
+            {% for question in questionnaire.questions %}
+                <section
+                    class="questionnaire-step"
+                    data-question-step="{{ forloop.counter }}"
+                    {% if not forloop.first %}hidden{% endif %}
+                >
+                    <p class="question-count">Question {{ forloop.counter }} of {{ questionnaire.questions|length }}</p>
+                    <progress
+                        aria-label="Questionnaire progress"
+                        value="{{ forloop.counter }}"
+                        max="{{ questionnaire.questions|length }}"
+                    >{{ forloop.counter }} of {{ questionnaire.questions|length }}</progress>
+                    <h2>{{ question.prompt }}</h2>
+                    {% if question.helper_text %}
+                        <button
+                            type="button"
+                            data-question-helper
+                            aria-expanded="false"
+                            aria-controls="question-{{ forloop.counter }}-helper"
+                        >What does this mean?</button>
+                        <p
+                            id="question-{{ forloop.counter }}-helper"
+                            data-question-helper-copy
+                            hidden
+                        >{{ question.helper_text }}</p>
                     {% endif %}
-                    {% if not forloop.last %}
-                        <button type="button" data-questionnaire-next disabled>Next</button>
-                    {% endif %}
-                </div>
-            </section>
-        {% endfor %}
-    </form>
+                    <fieldset class="response-options">
+                        <legend>Choose one response</legend>
+                        {% for option in questionnaire.response_options %}
+                            <label class="response-option" for="question-{{ forloop.parentloop.counter }}-option-{{ forloop.counter }}">
+                                <input
+                                    id="question-{{ forloop.parentloop.counter }}-option-{{ forloop.counter }}"
+                                    type="radio"
+                                    name="question-{{ forloop.parentloop.counter }}"
+                                    value="{{ option.value }}"
+                                >
+                                <span>{{ option.label }}</span>
+                            </label>
+                        {% endfor %}
+                    </fieldset>
+                    <div class="questionnaire-controls">
+                        {% if not forloop.first %}
+                            <button type="button" data-questionnaire-back>Back</button>
+                        {% endif %}
+                        {% if forloop.last %}
+                            <button type="submit" data-questionnaire-submit disabled>See my result</button>
+                        {% else %}
+                            <button type="button" data-questionnaire-next disabled>Next</button>
+                        {% endif %}
+                    </div>
+                </section>
+            {% endfor %}
+        </form>
+    </div>
+    <template data-active-result-template>
+        <section data-active-result>
+            <h1>Result</h1>
+            <p data-active-result-score></p>
+            <p data-active-result-cutoff></p>
+        </section>
+    </template>
 {% endblock %}

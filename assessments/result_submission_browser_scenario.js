@@ -33,15 +33,41 @@ class DevToolsClient {
                 handler(message.params, message.sessionId);
             }
         });
+        const rejectPendingMessages = () => {
+            for (const pendingMessage of this.pendingMessages.values()) {
+                pendingMessage.reject(new Error("DevTools WebSocket closed"));
+            }
+            this.pendingMessages.clear();
+        };
+        websocket.addEventListener("error", rejectPendingMessages);
+        websocket.addEventListener("close", rejectPendingMessages);
     }
 
     static async connect(url) {
-        const websocket = new WebSocket(url);
-        await new Promise((resolve, reject) => {
-            websocket.addEventListener("open", resolve, { once: true });
-            websocket.addEventListener("error", reject, { once: true });
-        });
-        return new DevToolsClient(websocket);
+        let lastError;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+            const websocket = new WebSocket(url);
+            websocket.addEventListener("error", () => {});
+            try {
+                await new Promise((resolve, reject) => {
+                    const handleOpen = () => {
+                        websocket.removeEventListener("error", handleError);
+                        resolve();
+                    };
+                    const handleError = (error) => {
+                        websocket.removeEventListener("open", handleOpen);
+                        reject(error);
+                    };
+                    websocket.addEventListener("open", handleOpen, { once: true });
+                    websocket.addEventListener("error", handleError, { once: true });
+                });
+                return new DevToolsClient(websocket);
+            } catch (error) {
+                lastError = error;
+                await delay(50);
+            }
+        }
+        throw lastError;
     }
 
     send(method, params = {}, sessionId = undefined) {
@@ -203,6 +229,18 @@ const installScoringSpy = () =>
         const original = window.K6Scoring.calculateK6Score;
         window.__issue10TestScoringCallCount = 0;
         window.__issue10TestScoringResponses = null;
+        window.__issue10TestHandoff = null;
+        window.__issue10TestOriginalFreeze = Object.freeze;
+        Object.freeze = (value) => {
+            if (
+                value &&
+                Object.hasOwn(value, "score") &&
+                Object.hasOwn(value, "isAtOrAboveCutoff")
+            ) {
+                window.__issue10TestHandoff = { ...value };
+            }
+            return window.__issue10TestOriginalFreeze(value);
+        };
         window.K6Scoring = {
             calculateK6Score(responses) {
                 window.__issue10TestScoringCallCount += 1;
@@ -217,9 +255,13 @@ const readAndClearScoringSpy = () =>
         const evidence = {
             calls: window.__issue10TestScoringCallCount,
             responses: window.__issue10TestScoringResponses,
+            handoff: window.__issue10TestHandoff,
         };
+        Object.freeze = window.__issue10TestOriginalFreeze;
         delete window.__issue10TestScoringCallCount;
         delete window.__issue10TestScoringResponses;
+        delete window.__issue10TestHandoff;
+        delete window.__issue10TestOriginalFreeze;
         return evidence;
     })()`);
 
@@ -266,6 +308,14 @@ const submitAndAssertResult = async (responses, score, cutoffState) => {
     assert(
         JSON.stringify(scoringEvidence.responses) === JSON.stringify(responses),
         "K6Scoring did not receive the six selected responses in order",
+    );
+    assert(
+        JSON.stringify(scoringEvidence.handoff) ===
+            JSON.stringify({
+                score,
+                isAtOrAboveCutoff: cutoffState === "at-or-above-13",
+            }),
+        "transient handoff did not contain exactly score and cutoff classification",
     );
 
     const state = await resultSnapshot();
@@ -342,6 +392,7 @@ try {
     assert(state.hasResult === false, "tampered incomplete submit created a result");
     const incompleteScoringEvidence = await readAndClearScoringSpy();
     assert(incompleteScoringEvidence.calls === 0, "incomplete attempt reached scoring");
+    assert(incompleteScoringEvidence.handoff === null, "incomplete attempt created a handoff");
     await navigate(resultUrl, waitForHome);
 
     await submitAndAssertResult([4, 3, 2, 1, 0, 4], 14, "at-or-above-13");

@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
 from .questionnaire_content import QUESTIONNAIRE_CONTENT
 
@@ -16,7 +16,7 @@ def test_page(request):
 
 
 def result_page(request):
-    return render(request, "assessments/result.html")
+    return redirect("home")
 
 
 def history_page(request):
