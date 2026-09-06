@@ -369,6 +369,33 @@ class K6ScoringTests(SimpleTestCase):
         )
 
 
+class ResultContentTests(SimpleTestCase):
+    node_path = shutil.which("node")
+
+    @skipUnless(node_path, "requires Node.js")
+    def test_public_browser_side_result_content_contract(self):
+        completed = subprocess.run(
+            [
+                self.node_path,
+                "--test",
+                str(Path(__file__).with_name("result_content_tests.js")),
+            ],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+            timeout=10,
+        )
+
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=(
+                "Result content unit tests failed:\n"
+                f"{completed.stdout}\n{completed.stderr}"
+            ),
+        )
+
+
 class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
     edge_path = Path(
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
