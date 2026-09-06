@@ -341,6 +341,30 @@ class QuestionnairePageTests(SimpleTestCase):
         )
 
 
+class K6ScoringTests(SimpleTestCase):
+    node_path = shutil.which("node")
+
+    @skipUnless(node_path, "requires Node.js")
+    def test_public_browser_side_scoring_contract(self):
+        completed = subprocess.run(
+            [
+                self.node_path,
+                "--test",
+                str(Path(__file__).with_name("k6_scoring_tests.js")),
+            ],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+            timeout=10,
+        )
+
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=f"Scoring unit tests failed:\n{completed.stdout}\n{completed.stderr}",
+        )
+
+
 class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
     edge_path = Path(
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
