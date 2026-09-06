@@ -1,5 +1,39 @@
 const [websocketUrl, testUrl, homeUrl] = process.argv.slice(2);
 const resultUrl = new URL("/result", testUrl).href;
+const expectedHigherScoreExplanation =
+    "Higher scores indicate greater psychological distress.";
+const expectedGuidance =
+    "Take a moment to reflect on how you have been feeling. If you are concerned about your mental health or it is affecting your daily life, consider talking with a qualified healthcare professional. You can also explore the resources below for information and practical coping ideas.";
+const expectedResources = [
+    {
+        label: "NIMH: Mental Health Information",
+        url: "https://www.nimh.nih.gov/health",
+    },
+    {
+        label: "WHO: Mental health",
+        url: "https://www.who.int/news-room/fact-sheets/detail/mental-health-strengthening-our-response",
+    },
+    {
+        label: "WHO: Doing What Matters in Times of Stress",
+        url: "https://www.who.int/publications/i/item/9789240003927",
+    },
+    {
+        label: "NHS Every Mind Matters: Self-help CBT techniques",
+        url: "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/self-help-cbt-techniques/",
+    },
+];
+const expectedOutcomes = {
+    "below-13": {
+        status: "Below the cutoff",
+        interpretation:
+            "Your score is below the serious or elevated psychological distress cutoff of 13.",
+    },
+    "at-or-above-13": {
+        status: "At or above the cutoff",
+        interpretation:
+            "Your score is at or above the serious or elevated psychological distress cutoff of 13.",
+    },
+};
 
 const assert = (condition, message) => {
     if (!condition) {
@@ -219,9 +253,23 @@ const resultSnapshot = () =>
         heading: document.querySelector("h1")?.textContent.trim() ?? null,
         score: document.querySelector("[data-active-result-score]")?.textContent.trim() ?? null,
         cutoffState: document.querySelector("[data-active-result-cutoff]")?.dataset.activeResultCutoff ?? null,
-        resultText: document.querySelector("[data-active-result-cutoff]")?.textContent.trim() ?? null,
+        status: document.querySelector("[data-active-result-status]")?.textContent.trim() ?? null,
+        interpretation: document.querySelector("[data-active-result-interpretation]")?.textContent.trim() ?? null,
+        higherScoreExplanation: document.querySelector("[data-active-result-higher-score]")?.textContent.trim() ?? null,
+        guidance: document.querySelector("[data-active-result-guidance]")?.textContent.trim() ?? null,
+        resources: Array.from(document.querySelectorAll("[data-active-result-resources] a"), (link) => ({
+            label: link.textContent.trim(),
+            url: link.href,
+        })),
+        retakeCount: document.querySelectorAll("[data-take-test-again]").length,
+        retakeLabel: document.querySelector("[data-take-test-again]")?.textContent.trim() ?? null,
+        retakeHref: document.querySelector("[data-take-test-again]")?.href ?? null,
+        retakeTarget: document.querySelector("[data-take-test-again]")?.target ?? null,
+        visibleText: document.querySelector("[data-active-result]")?.innerText ?? "",
         answerInputCount: document.querySelectorAll('input[type="radio"]').length,
         questionnaireCount: document.querySelectorAll("[data-questionnaire]").length,
+        questionnaireControlCount: document.querySelectorAll("[data-questionnaire-next], [data-questionnaire-back], [data-questionnaire-submit], [data-question-helper]").length,
+        prohibitedVisualizationCount: document.querySelectorAll("progress, meter, canvas, svg, [role='progressbar'], [data-score-gauge], [data-chart]").length,
         localStorageLength: localStorage.length,
         sessionStorageLength: sessionStorage.length,
         cookie: document.cookie,
@@ -230,19 +278,23 @@ const resultSnapshot = () =>
             ? (await indexedDB.databases()).map((database) => database.name)
             : [],
         historyState: history.state,
-        suspiciousGlobals: Object.keys(window).filter((key) =>
-            /answer|response|active.?result/i.test(key) &&
-            !key.startsWith("__issue10Test"),
-        ),
+        suspiciousGlobals: Object.keys(window).filter((key) => {
+            if (key === "ResultContent" || key.startsWith("__issue10Test") || key.startsWith("__issue12Test")) {
+                return false;
+            }
+            return /answer|response|active.?result/i.test(key);
+        }),
     }))()`);
 
 const installScoringSpy = () =>
     evaluate(`(() => {
         const original = window.K6Scoring.calculateK6Score;
+        const originalGetResultContent = window.ResultContent?.getResultContent;
         window.__issue10TestScoringCallCount = 0;
         window.__issue10TestScoringResponses = null;
         window.__issue10TestHandoff = null;
         window.__issue10TestOriginalFreeze = Object.freeze;
+        window.__issue12TestResultContentCalls = [];
         Object.freeze = (value) => {
             if (
                 value &&
@@ -260,6 +312,14 @@ const installScoringSpy = () =>
                 return original(responses);
             },
         };
+        if (originalGetResultContent) {
+            window.ResultContent = Object.freeze({
+                getResultContent(isAtOrAboveCutoff) {
+                    window.__issue12TestResultContentCalls.push(isAtOrAboveCutoff);
+                    return originalGetResultContent(isAtOrAboveCutoff);
+                },
+            });
+        }
     })()`);
 
 const readAndClearScoringSpy = () =>
@@ -268,12 +328,14 @@ const readAndClearScoringSpy = () =>
             calls: window.__issue10TestScoringCallCount,
             responses: window.__issue10TestScoringResponses,
             handoff: window.__issue10TestHandoff,
+            resultContentCalls: window.__issue12TestResultContentCalls,
         };
         Object.freeze = window.__issue10TestOriginalFreeze;
         delete window.__issue10TestScoringCallCount;
         delete window.__issue10TestScoringResponses;
         delete window.__issue10TestHandoff;
         delete window.__issue10TestOriginalFreeze;
+        delete window.__issue12TestResultContentCalls;
         return evidence;
     })()`);
 
@@ -329,16 +391,72 @@ const submitAndAssertResult = async (responses, score, cutoffState) => {
             }),
         "transient handoff did not contain exactly score and cutoff classification",
     );
+    assert(
+        JSON.stringify(scoringEvidence.resultContentCalls) ===
+            JSON.stringify([cutoffState === "at-or-above-13"]),
+        "Result did not consume the active classification through ResultContent exactly once",
+    );
 
     const state = await resultSnapshot();
+    const expectedOutcome = expectedOutcomes[cutoffState];
     assert(state.pathname === "/result", "successful submission did not reach /result");
     assert(state.search === "", "successful result URL contains a query string");
     assert(state.hash === "", "successful result URL contains a fragment");
-    assert(state.heading === "Result", "minimal Result heading is not visible");
-    assert(state.score === `${score} / 24`, "minimal Result score is wrong");
-    assert(state.cutoffState === cutoffState, "minimal Result cutoff state is wrong");
+    assert(state.heading === "Result", "Result heading is not visible");
+    assert(state.score === `${score} / 24`, "Result score is wrong");
+    assert(state.cutoffState === cutoffState, "Result cutoff state is wrong");
+    assert(state.status === expectedOutcome.status, "Result status is wrong");
+    assert(
+        state.interpretation === expectedOutcome.interpretation,
+        "Result interpretation is wrong",
+    );
+    assert(
+        state.higherScoreExplanation === expectedHigherScoreExplanation,
+        "Result higher-score explanation is wrong",
+    );
+    assert(state.guidance === expectedGuidance, "Result guidance is wrong");
+    assert(
+        JSON.stringify(state.resources) === JSON.stringify(expectedResources),
+        "Result resources or their order are wrong",
+    );
+    assert(state.retakeCount === 1, "Result does not have exactly one retake CTA");
+    assert(state.retakeLabel === "Take test again", "retake CTA label is wrong");
+    assert(state.retakeHref === testUrl, "retake CTA destination is wrong");
+    assert(state.retakeTarget === "", "retake CTA does not target the current tab");
     assert(state.answerInputCount === 0, "answers remain in the rendered result DOM");
     assert(state.questionnaireCount === 0, "questionnaire remains in the rendered result DOM");
+    assert(
+        state.questionnaireControlCount === 0,
+        "questionnaire controls remain in the rendered result DOM",
+    );
+    assert(
+        state.prohibitedVisualizationCount === 0,
+        "Result contains a prohibited visualization",
+    );
+    for (const prohibitedCopy of [
+        "Over the past 30 days",
+        "None of the time",
+        "A little of the time",
+        "Some of the time",
+        "Most of the time",
+        "All of the time",
+        "mild",
+        "moderate",
+        "severe",
+        "urgent help",
+        "crisis",
+        "diagnosis",
+        "diagnostic",
+        "screening disclaimer",
+        "adapted wording",
+        "modified wording",
+        "services near you",
+    ]) {
+        assert(
+            !state.visibleText.toLowerCase().includes(prohibitedCopy.toLowerCase()),
+            `Result contains prohibited copy: ${prohibitedCopy}`,
+        );
+    }
     assert(state.localStorageLength === 0, "submission wrote localStorage");
     assert(state.sessionStorageLength === 0, "submission wrote sessionStorage");
     assert(state.cookie === "", "submission wrote a cookie");
@@ -354,6 +472,7 @@ const submitAndAssertResult = async (responses, score, cutoffState) => {
         networkRequests.length === requestsBefore,
         "questionnaire submission transmitted a network request",
     );
+    return state;
 };
 
 const assertFreshQuestionnaire = async (context) => {
@@ -407,10 +526,47 @@ try {
     assert(incompleteScoringEvidence.handoff === null, "incomplete attempt created a handoff");
     await navigate(resultUrl, waitForHome);
 
-    await submitAndAssertResult([4, 3, 2, 1, 0, 4], 14, "at-or-above-13");
+    const atOrAboveResult = await submitAndAssertResult(
+        [4, 4, 4, 1, 0, 0],
+        13,
+        "at-or-above-13",
+    );
     await client.send("Page.reload", { ignoreCache: true });
     await waitForHome();
     assert((await evaluate("location.href")) === homeUrl, "refreshed /result did not end at Home");
+
+    const belowResult = await submitAndAssertResult(
+        [2, 2, 2, 2, 2, 2],
+        12,
+        "below-13",
+    );
+    for (const sharedField of [
+        "higherScoreExplanation",
+        "guidance",
+        "resources",
+        "retakeCount",
+        "retakeLabel",
+        "retakeHref",
+        "retakeTarget",
+    ]) {
+        assert(
+            JSON.stringify(belowResult[sharedField]) ===
+                JSON.stringify(atOrAboveResult[sharedField]),
+            `Result content varies unexpectedly at ${sharedField}`,
+        );
+    }
+    await pointerClick("[data-take-test-again]");
+    await waitForQuestionnaire();
+    await assertFreshQuestionnaire("Take test again");
+    await evaluate("history.back()");
+    await waitForHome();
+    assert(
+        (await evaluate("location.href")) === homeUrl,
+        "Back after retake resurrected the invalidated Result",
+    );
+    await evaluate("history.forward()");
+    await waitForQuestionnaire();
+    await assertFreshQuestionnaire("Forward after invalidated Result");
 
     await submitAndAssertResult([2, 2, 2, 2, 2, 2], 12, "below-13");
     await evaluate("history.back()");
@@ -450,7 +606,8 @@ try {
                 request.method === "GET" &&
                 request.postData === null &&
                 !request.url.includes("question-") &&
-                !request.url.includes("4%2C3%2C2%2C1%2C0%2C4"),
+                !request.url.includes("4%2C4%2C4%2C1%2C0%2C0") &&
+                !request.url.includes("2%2C2%2C2%2C2%2C2%2C2"),
         ),
         "answers were transmitted in a request, URL, or request body",
     );
