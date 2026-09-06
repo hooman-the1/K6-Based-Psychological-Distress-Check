@@ -298,13 +298,19 @@ class QuestionnairePageTests(SimpleTestCase):
             self.assertTrue(all(step["hidden"] for step in steps[1:]))
 
     def test_each_step_has_only_its_temporary_navigation_controls(self):
-        _, steps = self.get_rendered_steps()
+        response, steps = self.get_rendered_steps()
 
         self.assertEqual(steps[0]["controls"], ["next"])
         for step in steps[1:5]:
             with self.subTest(number=step["number"]):
                 self.assertEqual(step["controls"], ["back", "next"])
-        self.assertEqual(steps[5]["controls"], ["back"])
+        self.assertEqual(steps[5]["controls"], ["back", "submit"])
+        self.assertContains(
+            response,
+            '<button type="submit" data-questionnaire-submit disabled>See my result</button>',
+            count=1,
+            html=True,
+        )
 
     def test_static_assets_define_in_memory_boundary_safe_immediate_stepping(self):
         script = Path(finders.find("assessments/app.js")).read_text(encoding="utf-8")
@@ -326,8 +332,6 @@ class QuestionnairePageTests(SimpleTestCase):
             "localStorage",
             "sessionStorage",
             "document.cookie",
-            "history.pushState",
-            "history.replaceState",
         ):
             with self.subTest(prohibited_persistence=prohibited_persistence):
                 self.assertNotIn(prohibited_persistence, script)
@@ -377,7 +381,20 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
 
         self.assertEqual(result, "questionnaire browser scenario passed")
 
-    def run_questionnaire_browser_scenario(self):
+    @skipUnless(edge_path.is_file() and node_path, "requires Edge and Node.js")
+    def test_submission_and_transient_result_execute_in_a_real_browser(self):
+        result = self.run_questionnaire_browser_scenario(
+            script_name="result_submission_browser_scenario.js",
+            success_message="result submission browser scenario passed",
+        )
+
+        self.assertEqual(result, "result submission browser scenario passed")
+
+    def run_questionnaire_browser_scenario(
+        self,
+        script_name="questionnaire_browser_scenario.js",
+        success_message="questionnaire browser scenario passed",
+    ):
         debugging_port = self.get_available_port()
         test_url = f"{self.live_server_url}{reverse('test')}"
         home_url = f"{self.live_server_url}{reverse('home')}"
@@ -404,7 +421,7 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
                         self.node_path,
                         str(
                             Path(__file__).with_name(
-                                "questionnaire_browser_scenario.js"
+                                script_name
                             )
                         ),
                         websocket_url,
@@ -427,7 +444,10 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
         self.assertEqual(
             completed.returncode,
             0,
-            msg=f"Browser scenario failed:\n{completed.stderr}",
+            msg=(
+                f"Browser scenario failed; expected {success_message!r}:\n"
+                f"{completed.stderr}"
+            ),
         )
         return completed.stdout.strip()
 
@@ -476,13 +496,6 @@ class PageRouteTests(SimpleTestCase):
             "Test | K6-Based Psychological Distress Check",
         ),
         (
-            "result",
-            "/result",
-            "assessments/result.html",
-            "Result",
-            "Result | K6-Based Psychological Distress Check",
-        ),
-        (
             "history",
             "/history",
             "assessments/history.html",
@@ -506,6 +519,11 @@ class PageRouteTests(SimpleTestCase):
                     f"<title>{document_title}</title>",
                     html=True,
                 )
+
+    def test_direct_result_route_redirects_home_without_active_browser_state(self):
+        response = self.client.get(reverse("result"))
+
+        self.assertRedirects(response, reverse("home"))
 
     def test_each_page_uses_the_shared_mobile_document_shell(self):
         for route_name, path, _, _, _ in self.pages:

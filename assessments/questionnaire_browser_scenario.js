@@ -113,7 +113,9 @@ const snapshot = () =>
         const cards = step
             ? [...step.querySelectorAll(".response-option")]
             : [];
-        const nextButton = step?.querySelector("[data-questionnaire-next]");
+        const nextButton = step?.querySelector(
+            "[data-questionnaire-next], [data-questionnaire-submit]",
+        );
         const helperButton = step?.querySelector("[data-question-helper]");
         const helperCopy = step?.querySelector("[data-question-helper-copy]");
         const helperStyle = helperCopy ? getComputedStyle(helperCopy) : null;
@@ -220,7 +222,11 @@ const verifyStep = (state, number) => {
     );
 
     const navigationControls =
-        number === 1 ? ["Next"] : number === 6 ? ["Back"] : ["Back", "Next"];
+        number === 1
+            ? ["Next"]
+            : number === 6
+              ? ["Back", "See my result"]
+              : ["Back", "Next"];
     const expectedControls = expectedHelperText[number]
         ? ["What does this mean?", ...navigationControls]
         : navigationControls;
@@ -782,12 +788,12 @@ try {
     state = await snapshot();
     verifyStep(state, 6);
     assert(state.checkedCount === 0, "question 6 must begin with no response selected");
-    assert(state.nextDisabled === null, "question 6 must not render Next");
+    assert(state.nextDisabled === true, "question 6 submit must begin disabled");
     assert(
         (await evaluate(
-            'document.querySelector("[data-question-step]:not([hidden]) [data-questionnaire-next], [data-question-step]:not([hidden]) button[type=submit]")',
-        )) === null,
-        "question 6 must have no Next or submission action",
+            'document.querySelector("[data-question-step]:not([hidden]) [data-questionnaire-submit]")?.textContent.trim()',
+        )) === "See my result",
+        "question 6 must render the exact submission action",
     );
 
     await pointerClick(
@@ -875,6 +881,7 @@ try {
         "question 6 arrow-selected card",
     );
     assertSelectedBorderIsUnique(state, 4, "question 6 arrow-selected card");
+    assert(state.nextDisabled === false, "question 6 answer did not enable submit");
 
     const expectedAnswers = ["4", "1", "2", "0", "3", "4"];
     assert(state.totalCheckedCount === 6, "all six answers must be saved");
