@@ -85,6 +85,8 @@ describe("AssessmentHistory", () => {
         const symbolField = Symbol("answers");
         const withEnumerableSymbol = { score: 12, timestamp: 1000 };
         withEnumerableSymbol[symbolField] = [1, 2, 3, 4, 1, 1];
+        const withHiddenExtraField = { score: 12, timestamp: 1000 };
+        Object.defineProperty(withHiddenExtraField, "answers", { value: [] });
         const invalidResults = [
             null,
             undefined,
@@ -95,6 +97,7 @@ describe("AssessmentHistory", () => {
             { timestamp: 1000 },
             { score: 12, timestamp: 1000, answers: [] },
             withEnumerableSymbol,
+            withHiddenExtraField,
             { score: -1, timestamp: 1000 },
             { score: 25, timestamp: 1000 },
             { score: 1.5, timestamp: 1000 },
