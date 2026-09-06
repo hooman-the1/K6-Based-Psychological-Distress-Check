@@ -4,6 +4,7 @@
     const storageKey = "k6-based-distress-check.history.v1";
     const maximumScore = 24;
     const maximumTimestamp = 8640000000000000;
+    const maximumHistorySize = 20;
     const storageUnavailable = Object.freeze({
         ok: false,
         reason: "storage-unavailable",
@@ -77,6 +78,9 @@
                 timestamp: result.timestamp,
             }));
 
+    const retainNewestResults = (results) =>
+        orderOldestFirst(results).slice(-maximumHistorySize);
+
     const parseStoredResults = (storedValue) => {
         if (storedValue === null) {
             return { ok: true, results: [] };
@@ -125,9 +129,10 @@
             if (!readResult.ok) {
                 return { ok: false, reason: readResult.reason };
             }
+            const retainedResults = retainNewestResults(readResult.results);
             return {
                 ok: true,
-                results: readResult.results.map((result) => ({
+                results: retainedResults.map((result) => ({
                     score: result.score,
                     timestamp: result.timestamp,
                 })),
@@ -145,7 +150,7 @@
                 return { ok: false, reason: readResult.reason };
             }
 
-            const orderedResults = orderOldestFirst([
+            const retainedResults = retainNewestResults([
                 ...readResult.results,
                 validResult,
             ]);
@@ -153,7 +158,7 @@
             try {
                 writeResult = storagePort.write(
                     storageKey,
-                    JSON.stringify(orderedResults),
+                    JSON.stringify(retainedResults),
                 );
             } catch {
                 return { ...storageUnavailable };
