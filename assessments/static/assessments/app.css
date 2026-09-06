@@ -1,0 +1,21 @@
+:root {
+    color-scheme: light;
+    font-family: system-ui, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    min-height: 100vh;
+    margin: 0;
+    background: #f7f8fa;
+    color: #1f2933;
+}
+
+.page-shell {
+    width: min(calc(100% - 2rem), 36rem);
+    margin-inline: auto;
+    padding-block: 2rem;
+}

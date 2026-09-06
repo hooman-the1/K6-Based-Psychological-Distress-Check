@@ -3,6 +3,8 @@
 Django scaffold for the K6-based psychological distress check. The Django
 project configuration is in `config`, and the domain app is in `assessments`.
 
+The current page shell is available at `/`, `/test`, `/result`, and `/history`.
+
 ## Local setup
 
 ```powershell
