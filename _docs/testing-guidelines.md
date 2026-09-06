@@ -15,6 +15,15 @@ node --test .\assessments\k6_scoring_tests.js
 
 The scoring tests also run through the Django `assessments` test suite.
 
+The browser-side Result-content contract also uses Node.js's built-in test
+runner and performs no network requests. Run it directly with:
+
+```powershell
+node --test .\assessments\result_content_tests.js
+```
+
+These tests also run through the Django `assessments` test suite.
+
 The questionnaire interaction test starts Django's static live server and drives
 headless Microsoft Edge at a 320 px viewport through the browser's DevTools
 protocol. It uses the installed Edge executable and Node.js runtime directly, so
