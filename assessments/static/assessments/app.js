@@ -16,7 +16,19 @@ if (form) {
             );
         }
     };
+    const collapseHelper = (step) => {
+        const helperButton = step.querySelector("[data-question-helper]");
+        const helperCopy = step.querySelector("[data-question-helper-copy]");
+
+        if (helperButton && helperCopy) {
+            helperButton.setAttribute("aria-expanded", "false");
+            helperCopy.hidden = true;
+        }
+    };
     const showStep = (stepNumber) => {
+        if (stepNumber !== currentStep) {
+            collapseHelper(steps[currentStep]);
+        }
         currentStep = stepNumber;
         steps.forEach((step, index) => {
             step.hidden = index !== currentStep;
@@ -37,6 +49,18 @@ if (form) {
     });
 
     form.addEventListener("click", (event) => {
+        const helperButton = event.target.closest("[data-question-helper]");
+
+        if (helperButton && steps[currentStep].contains(helperButton)) {
+            const helperCopy = document.getElementById(
+                helperButton.getAttribute("aria-controls"),
+            );
+
+            helperButton.setAttribute("aria-expanded", "true");
+            helperCopy.hidden = false;
+            return;
+        }
+
         const nextButton = event.target.closest("[data-questionnaire-next]");
         const backButton = event.target.closest("[data-questionnaire-back]");
 

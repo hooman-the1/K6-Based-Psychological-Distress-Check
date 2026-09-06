@@ -18,6 +18,19 @@
                     max="{{ questionnaire.questions|length }}"
                 >{{ forloop.counter }} of {{ questionnaire.questions|length }}</progress>
                 <h2>{{ question.prompt }}</h2>
+                {% if question.helper_text %}
+                    <button
+                        type="button"
+                        data-question-helper
+                        aria-expanded="false"
+                        aria-controls="question-{{ forloop.counter }}-helper"
+                    >What does this mean?</button>
+                    <p
+                        id="question-{{ forloop.counter }}-helper"
+                        data-question-helper-copy
+                        hidden
+                    >{{ question.helper_text }}</p>
+                {% endif %}
                 <fieldset class="response-options">
                     <legend>Choose one response</legend>
                     {% for option in questionnaire.response_options %}

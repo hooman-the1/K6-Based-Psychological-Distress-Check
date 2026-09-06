@@ -680,6 +680,7 @@ try {
         state,
         "question 3 focus change",
     );
+    const expandedUnansweredQuestionThreeState = state;
     await pressSpace();
     let selectedState = await snapshot();
     assert(selectedState.checkedValue === "1", "Space did not select question 3 response");
@@ -700,11 +701,11 @@ try {
     );
     assert(
         JSON.stringify(state.cardStyles[1]) ===
-            JSON.stringify(gatedQuestionState.cardStyles[1]),
+            JSON.stringify(expandedUnansweredQuestionThreeState.cardStyles[1]),
         "keyboard selection did not clear the previous card border",
     );
     assertOnlyCardBorderColorChanged(
-        gatedQuestionState,
+        expandedUnansweredQuestionThreeState,
         state,
         2,
         "arrow-selected card",
