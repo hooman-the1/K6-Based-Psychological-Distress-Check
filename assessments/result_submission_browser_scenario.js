@@ -447,7 +447,8 @@ const submitAndAssertResult = async (responses, score, cutoffState) => {
         "crisis",
         "diagnosis",
         "diagnostic",
-        "screening disclaimer",
+        "screening",
+        "adaptation",
         "adapted wording",
         "modified wording",
         "services near you",
@@ -555,6 +556,19 @@ try {
             `Result content varies unexpectedly at ${sharedField}`,
         );
     }
+    const normalizeOutcomeText = (state, outcome) =>
+        state.visibleText
+            .replace(state.score, "[score]")
+            .replace(outcome.status, "[status]")
+            .replace(outcome.interpretation, "[interpretation]");
+    assert(
+        normalizeOutcomeText(belowResult, expectedOutcomes["below-13"]) ===
+            normalizeOutcomeText(
+                atOrAboveResult,
+                expectedOutcomes["at-or-above-13"],
+            ),
+        "visible Result content varies beyond score, status, and interpretation",
+    );
     await pointerClick("[data-take-test-again]");
     await waitForQuestionnaire();
     await assertFreshQuestionnaire("Take test again");

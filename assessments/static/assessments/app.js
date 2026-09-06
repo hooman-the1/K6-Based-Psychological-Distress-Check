@@ -55,6 +55,9 @@ if (form) {
     };
 
     const showActiveResult = () => {
+        const content = window.ResultContent.getResultContent(
+            activeResult.isAtOrAboveCutoff,
+        );
         const resultPage = resultTemplate.content.firstElementChild.cloneNode(true);
         resultPage.querySelector("[data-active-result-score]").textContent =
             `${activeResult.score} / 24`;
@@ -62,9 +65,26 @@ if (form) {
         cutoff.dataset.activeResultCutoff = activeResult.isAtOrAboveCutoff
             ? "at-or-above-13"
             : "below-13";
-        cutoff.textContent = activeResult.isAtOrAboveCutoff
-            ? "At or above the 13-point cutoff"
-            : "Below the 13-point cutoff";
+        resultPage.querySelector("[data-active-result-status]").textContent =
+            content.status;
+        resultPage.querySelector(
+            "[data-active-result-interpretation]",
+        ).textContent = content.interpretation;
+        resultPage.querySelector("[data-active-result-higher-score]").textContent =
+            content.higherScoreExplanation;
+        resultPage.querySelector("[data-active-result-guidance]").textContent =
+            content.guidance;
+        const resourceList = resultPage.querySelector(
+            "[data-active-result-resources]",
+        );
+        for (const resource of content.resources) {
+            const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.href = resource.url;
+            link.textContent = resource.label;
+            item.append(link);
+            resourceList.append(item);
+        }
         pageShell.replaceChildren(resultPage);
         document.title = "Result | K6-Based Psychological Distress Check";
     };
@@ -129,6 +149,18 @@ if (form) {
         form.reset();
         showActiveResult();
         history.pushState(null, "", "/result");
+    });
+
+    pageShell.addEventListener("click", (event) => {
+        const retakeLink = event.target.closest("[data-take-test-again]");
+
+        if (!retakeLink) {
+            return;
+        }
+
+        event.preventDefault();
+        showFreshQuestionnaire();
+        history.pushState(null, "", "/test");
     });
 
     window.addEventListener("popstate", () => {

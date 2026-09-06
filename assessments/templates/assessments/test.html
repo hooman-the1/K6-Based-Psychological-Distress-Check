@@ -64,7 +64,17 @@
         <section data-active-result>
             <h1>Result</h1>
             <p data-active-result-score></p>
-            <p data-active-result-cutoff></p>
+            <div data-active-result-cutoff>
+                <p data-active-result-status></p>
+                <p data-active-result-interpretation></p>
+            </div>
+            <p data-active-result-higher-score></p>
+            <p data-active-result-guidance></p>
+            <section aria-labelledby="result-resources-heading">
+                <h2 id="result-resources-heading">Resources</h2>
+                <ul data-active-result-resources></ul>
+            </section>
+            <a href="{% url 'test' %}" data-take-test-again>Take test again</a>
         </section>
     </template>
 {% endblock %}
