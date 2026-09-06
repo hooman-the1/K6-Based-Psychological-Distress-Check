@@ -4,11 +4,25 @@ if (form) {
     const steps = Array.from(form.querySelectorAll("[data-question-step]"));
     let currentStep = 0;
 
+    const updateNextButtonState = () => {
+        const currentQuestion = steps[currentStep];
+        const nextButton = currentQuestion.querySelector(
+            "[data-questionnaire-next]",
+        );
+
+        if (nextButton) {
+            nextButton.disabled = !currentQuestion.querySelector(
+                'input[type="radio"]:checked',
+            );
+        }
+    };
+
     const showStep = (stepNumber) => {
         currentStep = stepNumber;
         steps.forEach((step, index) => {
             step.hidden = index !== currentStep;
         });
+        updateNextButtonState();
     };
 
     const clearCurrentResponse = () => {
@@ -22,6 +36,15 @@ if (form) {
 
     form.reset();
     showStep(0);
+
+    form.addEventListener("change", (event) => {
+        if (
+            event.target.matches('input[type="radio"]') &&
+            steps[currentStep].contains(event.target)
+        ) {
+            updateNextButtonState();
+        }
+    });
 
     form.addEventListener("click", (event) => {
         const nextButton = event.target.closest("[data-questionnaire-next]");

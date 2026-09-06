@@ -59,6 +59,10 @@ progress {
     cursor: pointer;
 }
 
+.response-option:has(input:checked) {
+    border-color: #526d82;
+}
+
 .questionnaire-controls {
     display: flex;
     justify-content: space-between;
@@ -68,4 +72,9 @@ progress {
 .questionnaire-controls button {
     min-height: 2.75rem;
     padding-inline: 1.25rem;
+}
+
+.questionnaire-controls button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
 }
