@@ -396,6 +396,33 @@ class ResultContentTests(SimpleTestCase):
         )
 
 
+class AssessmentHistoryTests(SimpleTestCase):
+    node_path = shutil.which("node")
+
+    @skipUnless(node_path, "requires Node.js")
+    def test_public_browser_side_history_contract(self):
+        completed = subprocess.run(
+            [
+                self.node_path,
+                "--test",
+                str(Path(__file__).with_name("assessment_history_tests.js")),
+            ],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+            timeout=10,
+        )
+
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=(
+                "Assessment history unit tests failed:\n"
+                f"{completed.stdout}\n{completed.stderr}"
+            ),
+        )
+
+
 class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
     edge_path = Path(
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
@@ -416,6 +443,15 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
         )
 
         self.assertEqual(result, "result submission browser scenario passed")
+
+    @skipUnless(edge_path.is_file() and node_path, "requires Edge and Node.js")
+    def test_assessment_history_uses_real_same_origin_local_storage(self):
+        result = self.run_questionnaire_browser_scenario(
+            script_name="assessment_history_browser_scenario.js",
+            success_message="assessment history browser scenario passed",
+        )
+
+        self.assertEqual(result, "assessment history browser scenario passed")
 
     def run_questionnaire_browser_scenario(
         self,
@@ -574,6 +610,11 @@ class PageRouteTests(SimpleTestCase):
                 self.assertContains(response, 'href="/static/assessments/app.css"')
                 self.assertContains(
                     response,
+                    '<script defer src="/static/assessments/assessment-history.js"></script>',
+                    html=True,
+                )
+                self.assertContains(
+                    response,
                     '<script defer src="/static/assessments/app.js"></script>',
                     html=True,
                 )
@@ -587,6 +628,7 @@ class PageRouteTests(SimpleTestCase):
 
     def test_static_asset_entry_points_exist(self):
         self.assertIsNotNone(finders.find("assessments/app.css"))
+        self.assertIsNotNone(finders.find("assessments/assessment-history.js"))
         self.assertIsNotNone(finders.find("assessments/app.js"))
 
     def test_main_content_width_prevents_overflow_at_320_pixel_viewport(self):
