@@ -43,12 +43,24 @@ class DevToolsClient {
         websocket.addEventListener("close", rejectPendingMessages);
     }
 
-    static async connect(url) {
+    static async connect(initialUrl) {
+        const debuggingOrigin = new URL(
+            initialUrl.replace(/^ws:/, "http:"),
+        ).origin;
         let lastError;
         for (let attempt = 0; attempt < 20; attempt += 1) {
-            const websocket = new WebSocket(url);
-            websocket.addEventListener("error", () => {});
             try {
+                const targets = await fetch(`${debuggingOrigin}/json/list`).then(
+                    (response) => response.json(),
+                );
+                const pageTarget = targets.find(
+                    (target) => target.type === "page",
+                );
+                if (!pageTarget) {
+                    throw new Error("Edge has not exposed a page target");
+                }
+                const websocket = new WebSocket(pageTarget.webSocketDebuggerUrl);
+                websocket.addEventListener("error", () => {});
                 await new Promise((resolve, reject) => {
                     const handleOpen = () => {
                         websocket.removeEventListener("error", handleError);

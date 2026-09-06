@@ -408,20 +408,18 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
                     self.edge_path,
                     "--headless=new",
                     "--disable-gpu",
+                    "--no-sandbox",
                     "--no-first-run",
                     f"--remote-debugging-port={debugging_port}",
                     "--remote-allow-origins=*",
                     f"--user-data-dir={profile}",
-                    test_url,
+                    "about:blank",
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             try:
-                websocket_url = self.wait_for_page_websocket(
-                    debugging_port,
-                    expected_url=test_url,
-                )
+                websocket_url = self.wait_for_page_websocket(debugging_port)
                 completed = subprocess.run(
                     [
                         self.node_path,
@@ -463,7 +461,7 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
             available_socket.bind(("127.0.0.1", 0))
             return available_socket.getsockname()[1]
 
-    def wait_for_page_websocket(self, debugging_port, expected_url):
+    def wait_for_page_websocket(self, debugging_port):
         endpoint = f"http://127.0.0.1:{debugging_port}/json/list"
         deadline = time.monotonic() + 10
 
@@ -475,7 +473,6 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
                     target
                     for target in targets
                     if target.get("type") == "page"
-                    and target.get("url") == expected_url
                 )
                 return page_target["webSocketDebuggerUrl"]
             except (
