@@ -1,5 +1,6 @@
 const [websocketUrl, testUrl, homeUrl] = process.argv.slice(2);
 const resultUrl = new URL("/result", testUrl).href;
+const storageKey = "k6-based-distress-check.history.v1";
 const expectedHigherScoreExplanation =
     "Higher scores indicate greater psychological distress.";
 const expectedGuidance =
@@ -271,6 +272,8 @@ const resultSnapshot = () =>
         questionnaireControlCount: document.querySelectorAll("[data-questionnaire-next], [data-questionnaire-back], [data-questionnaire-submit], [data-question-helper]").length,
         prohibitedVisualizationCount: document.querySelectorAll("progress, meter, canvas, svg, [role='progressbar'], [data-score-gauge], [data-chart]").length,
         localStorageLength: localStorage.length,
+        localStorageKeys: Object.keys(localStorage),
+        rawHistory: localStorage.getItem(${JSON.stringify(storageKey)}),
         sessionStorageLength: sessionStorage.length,
         cookie: document.cookie,
         cacheNames: await caches.keys(),
@@ -279,22 +282,31 @@ const resultSnapshot = () =>
             : [],
         historyState: history.state,
         suspiciousGlobals: Object.keys(window).filter((key) => {
-            if (key === "ResultContent" || key.startsWith("__issue10Test") || key.startsWith("__issue12Test")) {
+            if (key === "ResultContent" || key === "AssessmentHistory" || key.startsWith("__issue10Test") || key.startsWith("__issue12Test") || key.startsWith("__issue15Test")) {
                 return false;
             }
             return /answer|response|active.?result/i.test(key);
         }),
     }))()`);
 
-const installScoringSpy = () =>
+const installSubmissionSpies = (saveMode = "delegate") =>
     evaluate(`(() => {
         const original = window.K6Scoring.calculateK6Score;
         const originalGetResultContent = window.ResultContent?.getResultContent;
+        const originalAssessmentHistory = window.AssessmentHistory;
+        const originalDateNow = Date.now;
         window.__issue10TestScoringCallCount = 0;
         window.__issue10TestScoringResponses = null;
         window.__issue10TestHandoff = null;
         window.__issue10TestOriginalFreeze = Object.freeze;
         window.__issue12TestResultContentCalls = [];
+        window.__issue15TestEvents = [];
+        window.__issue15TestDateNowCalls = 0;
+        window.__issue15TestSaveCalls = [];
+        window.__issue15TestSaveResults = [];
+        window.__issue15TestSaveThrows = 0;
+        window.__issue15TestOriginalAssessmentHistory = originalAssessmentHistory;
+        window.__issue15TestOriginalDateNow = originalDateNow;
         Object.freeze = (value) => {
             if (
                 value &&
@@ -302,6 +314,7 @@ const installScoringSpy = () =>
                 Object.hasOwn(value, "isAtOrAboveCutoff")
             ) {
                 window.__issue10TestHandoff = { ...value };
+                window.__issue15TestEvents.push("active-result-established");
             }
             return window.__issue10TestOriginalFreeze(value);
         };
@@ -309,9 +322,51 @@ const installScoringSpy = () =>
             calculateK6Score(responses) {
                 window.__issue10TestScoringCallCount += 1;
                 window.__issue10TestScoringResponses = [...responses];
-                return original(responses);
+                window.__issue15TestEvents.push("scoring-started");
+                const result = original(responses);
+                window.__issue15TestEvents.push("scoring-succeeded");
+                return result;
             },
         };
+        Date.now = () => {
+            window.__issue15TestDateNowCalls += 1;
+            window.__issue15TestEvents.push("timestamp-captured");
+            return originalDateNow();
+        };
+        window.AssessmentHistory = Object.freeze({
+            getResults: originalAssessmentHistory.getResults,
+            saveResult(result) {
+                window.__issue15TestEvents.push("save-attempted");
+                window.__issue15TestSaveCalls.push({
+                    argument: { ...result },
+                    argumentKeys: Object.keys(result),
+                    handoff: window.__issue10TestHandoff
+                        ? { ...window.__issue10TestHandoff }
+                        : null,
+                    checkedCount: document.querySelectorAll('input[type="radio"]:checked').length,
+                    resultVisible: Boolean(document.querySelector("[data-active-result]")),
+                    pathname: location.pathname,
+                });
+                const mode = ${JSON.stringify(saveMode)};
+                if (mode === "storage-unavailable") {
+                    const outcome = { ok: false, reason: "storage-unavailable" };
+                    window.__issue15TestSaveResults.push(outcome);
+                    return outcome;
+                }
+                if (mode === "explicit-failure") {
+                    const outcome = { ok: false, reason: "unexpected-failure" };
+                    window.__issue15TestSaveResults.push(outcome);
+                    return outcome;
+                }
+                if (mode === "throw") {
+                    window.__issue15TestSaveThrows += 1;
+                    throw new Error("injected application history boundary failure");
+                }
+                const outcome = originalAssessmentHistory.saveResult(result);
+                window.__issue15TestSaveResults.push(outcome);
+                return outcome;
+            },
+        });
         if (originalGetResultContent) {
             window.ResultContent = Object.freeze({
                 getResultContent(isAtOrAboveCutoff) {
@@ -322,20 +377,34 @@ const installScoringSpy = () =>
         }
     })()`);
 
-const readAndClearScoringSpy = () =>
+const readAndClearSubmissionSpies = () =>
     evaluate(`(() => {
         const evidence = {
             calls: window.__issue10TestScoringCallCount,
             responses: window.__issue10TestScoringResponses,
             handoff: window.__issue10TestHandoff,
             resultContentCalls: window.__issue12TestResultContentCalls,
+            events: window.__issue15TestEvents,
+            dateNowCalls: window.__issue15TestDateNowCalls,
+            saveCalls: window.__issue15TestSaveCalls,
+            saveResults: window.__issue15TestSaveResults,
+            saveThrows: window.__issue15TestSaveThrows,
         };
         Object.freeze = window.__issue10TestOriginalFreeze;
+        Date.now = window.__issue15TestOriginalDateNow;
+        window.AssessmentHistory = window.__issue15TestOriginalAssessmentHistory;
         delete window.__issue10TestScoringCallCount;
         delete window.__issue10TestScoringResponses;
         delete window.__issue10TestHandoff;
         delete window.__issue10TestOriginalFreeze;
         delete window.__issue12TestResultContentCalls;
+        delete window.__issue15TestEvents;
+        delete window.__issue15TestDateNowCalls;
+        delete window.__issue15TestSaveCalls;
+        delete window.__issue15TestSaveResults;
+        delete window.__issue15TestSaveThrows;
+        delete window.__issue15TestOriginalAssessmentHistory;
+        delete window.__issue15TestOriginalDateNow;
         return evidence;
     })()`);
 
@@ -368,36 +437,7 @@ const answerThroughQuestionSix = async (responses) => {
     }
 };
 
-const submitAndAssertResult = async (responses, score, cutoffState) => {
-    await navigate(testUrl, waitForQuestionnaire);
-    await installScoringSpy();
-    const historyLengthBefore = (await questionnaireSnapshot()).historyLength;
-    await answerThroughQuestionSix(responses);
-    const requestsBefore = networkRequests.length;
-    await pointerClick("[data-questionnaire-submit]");
-    await waitForResult(score);
-
-    const scoringEvidence = await readAndClearScoringSpy();
-    assert(scoringEvidence.calls === 1, "submission did not call K6Scoring exactly once");
-    assert(
-        JSON.stringify(scoringEvidence.responses) === JSON.stringify(responses),
-        "K6Scoring did not receive the six selected responses in order",
-    );
-    assert(
-        JSON.stringify(scoringEvidence.handoff) ===
-            JSON.stringify({
-                score,
-                isAtOrAboveCutoff: cutoffState === "at-or-above-13",
-            }),
-        "transient handoff did not contain exactly score and cutoff classification",
-    );
-    assert(
-        JSON.stringify(scoringEvidence.resultContentCalls) ===
-            JSON.stringify([cutoffState === "at-or-above-13"]),
-        "Result did not consume the active classification through ResultContent exactly once",
-    );
-
-    const state = await resultSnapshot();
+const assertResultPresentation = (state, score, cutoffState) => {
     const expectedOutcome = expectedOutcomes[cutoffState];
     assert(state.pathname === "/result", "successful submission did not reach /result");
     assert(state.search === "", "successful result URL contains a query string");
@@ -452,13 +492,159 @@ const submitAndAssertResult = async (responses, score, cutoffState) => {
         "adapted wording",
         "modified wording",
         "services near you",
+        "history saved",
+        "saved history is unavailable",
     ]) {
         assert(
             !state.visibleText.toLowerCase().includes(prohibitedCopy.toLowerCase()),
             `Result contains prohibited copy: ${prohibitedCopy}`,
         );
     }
-    assert(state.localStorageLength === 0, "submission wrote localStorage");
+};
+
+const completeCurrentQuestionnaireAndAssertResult = async (
+    responses,
+    score,
+    cutoffState,
+    {
+        saveMode = "delegate",
+        duplicateSubmit = false,
+        expectedSaveOutcome = { ok: true },
+        expectHistoryUnchanged = false,
+        spiesAlreadyInstalled = false,
+    } = {},
+) => {
+    const historyBeforeRaw = await evaluate(
+        `localStorage.getItem(${JSON.stringify(storageKey)})`,
+    );
+    if (!spiesAlreadyInstalled) {
+        await installSubmissionSpies(saveMode);
+    }
+    const historyLengthBefore = (await questionnaireSnapshot()).historyLength;
+    await answerThroughQuestionSix(responses);
+    const requestsBefore = networkRequests.length;
+    const timestampLowerBound = await evaluate(
+        "Math.floor(performance.timeOrigin + performance.now())",
+    );
+    if (duplicateSubmit) {
+        await evaluate(`(() => {
+            const form = document.querySelector("[data-questionnaire]");
+            const submit = document.querySelector("[data-questionnaire-submit]");
+            form.dispatchEvent(new SubmitEvent("submit", {
+                bubbles: true,
+                cancelable: true,
+                submitter: submit,
+            }));
+            form.dispatchEvent(new SubmitEvent("submit", {
+                bubbles: true,
+                cancelable: true,
+                submitter: submit,
+            }));
+        })()`);
+    } else {
+        await pointerClick("[data-questionnaire-submit]");
+    }
+    await waitForResult(score);
+    const timestampUpperBound = await evaluate(
+        "Math.ceil(performance.timeOrigin + performance.now())",
+    );
+
+    const scoringEvidence = await readAndClearSubmissionSpies();
+    assert(scoringEvidence.calls === 1, "submission did not call K6Scoring exactly once");
+    assert(
+        JSON.stringify(scoringEvidence.responses) === JSON.stringify(responses),
+        "K6Scoring did not receive the six selected responses in order",
+    );
+    assert(
+        JSON.stringify(scoringEvidence.handoff) ===
+            JSON.stringify({
+                score,
+                isAtOrAboveCutoff: cutoffState === "at-or-above-13",
+            }),
+        "transient handoff did not contain exactly score and cutoff classification",
+    );
+    assert(
+        JSON.stringify(scoringEvidence.resultContentCalls) ===
+            JSON.stringify([cutoffState === "at-or-above-13"]),
+        "Result did not consume the active classification through ResultContent exactly once",
+    );
+    assert(scoringEvidence.dateNowCalls === 1, "completion timestamp was not captured exactly once");
+    assert(scoringEvidence.saveCalls.length === 1, "submission did not attempt exactly one save");
+    assert(
+        scoringEvidence.saveThrows === (saveMode === "throw" ? 1 : 0),
+        "history boundary throw count is wrong",
+    );
+    if (saveMode !== "throw") {
+        assert(
+            JSON.stringify(scoringEvidence.saveResults) ===
+                JSON.stringify([expectedSaveOutcome]),
+            "submission observed the wrong history-boundary outcome",
+        );
+    }
+    const saveCall = scoringEvidence.saveCalls[0];
+    assert(
+        JSON.stringify(saveCall.argumentKeys) === JSON.stringify(["score", "timestamp"]),
+        "history argument does not have only canonical score/timestamp keys",
+    );
+    assert(saveCall.argument.score === score, "history argument contains the wrong score");
+    assert(
+        Number.isInteger(saveCall.argument.timestamp) &&
+            Number.isFinite(saveCall.argument.timestamp),
+        "completion timestamp is not a finite integer",
+    );
+    assert(
+        saveCall.argument.timestamp >= timestampLowerBound &&
+            saveCall.argument.timestamp <= timestampUpperBound,
+        "completion timestamp is not bounded by the accepted submit event",
+    );
+    assert(
+        JSON.stringify(saveCall.handoff) === JSON.stringify(scoringEvidence.handoff),
+        "active Result was not established before saving",
+    );
+    assert(saveCall.checkedCount === 0, "answers were not discarded before saving");
+    assert(saveCall.resultVisible === false, "Result rendered before the save attempt");
+    assert(saveCall.pathname === "/test", "URL changed before the save attempt");
+    assert(
+        JSON.stringify(scoringEvidence.events) ===
+            JSON.stringify([
+                "scoring-started",
+                "scoring-succeeded",
+                "active-result-established",
+                "timestamp-captured",
+                "save-attempted",
+            ]),
+        "accepted-completion operations ran out of order",
+    );
+
+    const state = await resultSnapshot();
+    assertResultPresentation(state, score, cutoffState);
+    assert(
+        state.localStorageKeys.every((key) => key === storageKey),
+        "submission wrote an unexpected localStorage key",
+    );
+    if (expectHistoryUnchanged) {
+        assert(state.rawHistory === historyBeforeRaw, "failed save changed stored history");
+    } else {
+        const priorRecords = historyBeforeRaw === null ? [] : JSON.parse(historyBeforeRaw);
+        const expectedRecords = [...priorRecords, saveCall.argument]
+            .map((record, insertionIndex) => ({ record, insertionIndex }))
+            .sort(
+                (left, right) =>
+                    left.record.timestamp - right.record.timestamp ||
+                    left.insertionIndex - right.insertionIndex,
+            )
+            .slice(-20)
+            .map(({ record }) => record);
+        assert(
+            state.rawHistory === JSON.stringify(expectedRecords),
+            "submission did not persist the exact canonical history record",
+        );
+        assert(
+            JSON.stringify(Object.keys(JSON.parse(state.rawHistory).at(-1))) ===
+                JSON.stringify(["score", "timestamp"]),
+            "stored history contains fields beyond score and timestamp",
+        );
+    }
     assert(state.sessionStorageLength === 0, "submission wrote sessionStorage");
     assert(state.cookie === "", "submission wrote a cookie");
     assert(state.cacheNames.length === 0, "submission wrote Cache Storage");
@@ -473,7 +659,17 @@ const submitAndAssertResult = async (responses, score, cutoffState) => {
         networkRequests.length === requestsBefore,
         "questionnaire submission transmitted a network request",
     );
-    return state;
+    return { state, scoringEvidence, saveCall };
+};
+
+const submitAndAssertResult = async (responses, score, cutoffState, options = {}) => {
+    await navigate(testUrl, waitForQuestionnaire);
+    return completeCurrentQuestionnaireAndAssertResult(
+        responses,
+        score,
+        cutoffState,
+        options,
+    );
 };
 
 const assertFreshQuestionnaire = async (context) => {
@@ -499,7 +695,8 @@ try {
     assert((await evaluate("location.href")) === homeUrl, "direct /result did not end at Home");
 
     await navigate(testUrl, waitForQuestionnaire);
-    await installScoringSpy();
+    await evaluate("localStorage.clear()");
+    await installSubmissionSpies();
     for (let question = 1; question <= 5; question += 1) {
         await pointerClick(
             `[data-question-step="${question}"] .response-option:nth-of-type(2)`,
@@ -522,25 +719,42 @@ try {
     state = await questionnaireSnapshot();
     assert(state.pathname === "/test", "tampered incomplete submit changed URL");
     assert(state.hasResult === false, "tampered incomplete submit created a result");
-    const incompleteScoringEvidence = await readAndClearScoringSpy();
+    const incompleteScoringEvidence = await readAndClearSubmissionSpies();
     assert(incompleteScoringEvidence.calls === 0, "incomplete attempt reached scoring");
     assert(incompleteScoringEvidence.handoff === null, "incomplete attempt created a handoff");
+    assert(incompleteScoringEvidence.dateNowCalls === 0, "incomplete attempt captured a timestamp");
+    assert(incompleteScoringEvidence.saveCalls.length === 0, "incomplete attempt reached history");
+    assert((await evaluate("localStorage.length")) === 0, "incomplete attempt wrote history");
     await navigate(resultUrl, waitForHome);
 
-    const atOrAboveResult = await submitAndAssertResult(
-        [4, 4, 4, 1, 0, 0],
-        13,
+    const primaryCompletion = await submitAndAssertResult(
+        [4, 3, 2, 1, 0, 4],
+        14,
         "at-or-above-13",
+    );
+    const primaryRawHistory = await evaluate(
+        `localStorage.getItem(${JSON.stringify(storageKey)})`,
+    );
+    assert(
+        primaryRawHistory === JSON.stringify([primaryCompletion.saveCall.argument]),
+        "first completion did not leave exactly one raw canonical record",
     );
     await client.send("Page.reload", { ignoreCache: true });
     await waitForHome();
     assert((await evaluate("location.href")) === homeUrl, "refreshed /result did not end at Home");
+    assert(
+        (await evaluate(`localStorage.getItem(${JSON.stringify(storageKey)})`)) ===
+            primaryRawHistory,
+        "refresh duplicated or changed the completed result",
+    );
 
-    const belowResult = await submitAndAssertResult(
+    const belowCompletion = await submitAndAssertResult(
         [2, 2, 2, 2, 2, 2],
         12,
         "below-13",
     );
+    const atOrAboveResult = primaryCompletion.state;
+    const belowResult = belowCompletion.state;
     for (const sharedField of [
         "higherScoreExplanation",
         "guidance",
@@ -569,26 +783,172 @@ try {
             ),
         "visible Result content varies beyond score, status, and interpretation",
     );
+    const historyBeforeRetake = belowResult.rawHistory;
+    await installSubmissionSpies();
     await pointerClick("[data-take-test-again]");
     await waitForQuestionnaire();
     await assertFreshQuestionnaire("Take test again");
-    await evaluate("history.back()");
-    await waitForHome();
     assert(
-        (await evaluate("location.href")) === homeUrl,
-        "Back after retake resurrected the invalidated Result",
+        (await evaluate("window.__issue15TestSaveCalls.length")) === 0,
+        "Take test again called saveResult",
+    );
+    assert(
+        (await evaluate(`localStorage.getItem(${JSON.stringify(storageKey)})`)) ===
+            historyBeforeRetake,
+        "Take test again changed history",
+    );
+    const retakeCompletion = await completeCurrentQuestionnaireAndAssertResult(
+        [2, 2, 2, 2, 2, 2],
+        12,
+        "below-13",
+        { spiesAlreadyInstalled: true },
+    );
+    assert(
+        JSON.parse(retakeCompletion.state.rawHistory).length ===
+            JSON.parse(historyBeforeRetake).length + 1,
+        "completed retake did not add exactly one new record",
+    );
+    await evaluate("history.back()");
+    await waitForQuestionnaire();
+    await assertFreshQuestionnaire("Back from completed retake Result");
+    const historyAfterRetake = retakeCompletion.state.rawHistory;
+    assert(
+        (await evaluate(`localStorage.getItem(${JSON.stringify(storageKey)})`)) ===
+            historyAfterRetake,
+        "Back duplicated the completed retake",
     );
     await evaluate("history.forward()");
-    await waitForQuestionnaire();
-    await assertFreshQuestionnaire("Forward after invalidated Result");
+    await waitForHome();
+    assert((await evaluate("location.href")) === homeUrl, "Forward resurrected a retake Result");
+    assert(
+        (await evaluate(`localStorage.getItem(${JSON.stringify(storageKey)})`)) ===
+            historyAfterRetake,
+        "Forward duplicated the completed retake",
+    );
 
-    await submitAndAssertResult([2, 2, 2, 2, 2, 2], 12, "below-13");
+    const duplicateCompletion = await submitAndAssertResult(
+        [4, 3, 2, 1, 0, 4],
+        14,
+        "at-or-above-13",
+        { duplicateSubmit: true },
+    );
+    const historyAfterDuplicateAttempt = duplicateCompletion.state.rawHistory;
     await evaluate("history.back()");
     await waitForQuestionnaire();
     await assertFreshQuestionnaire("browser Back from Result");
+    assert(
+        (await evaluate(`localStorage.getItem(${JSON.stringify(storageKey)})`)) ===
+            historyAfterDuplicateAttempt,
+        "Back duplicated a completed result",
+    );
     await evaluate("history.forward()");
     await waitForHome();
     assert((await evaluate("location.href")) === homeUrl, "Forward resurrected a discarded result");
+    assert(
+        (await evaluate(`localStorage.getItem(${JSON.stringify(storageKey)})`)) ===
+            historyAfterDuplicateAttempt,
+        "Forward duplicated a completed result",
+    );
+
+    await navigate(testUrl, waitForQuestionnaire);
+    await evaluate("localStorage.clear()");
+    await installSubmissionSpies();
+    await answerThroughQuestionSix([4, 3, 2, 1, 0, 4]);
+    await evaluate(`(() => {
+        document.querySelector('input[type="radio"]:checked').value = "invalid";
+        document.querySelector("[data-questionnaire]").requestSubmit();
+    })()`);
+    await delay(100);
+    state = await questionnaireSnapshot();
+    assert(state.pathname === "/test", "invalid scoring input changed URL");
+    assert(state.hasResult === false, "invalid scoring input created a Result");
+    const invalidScoringEvidence = await readAndClearSubmissionSpies();
+    assert(invalidScoringEvidence.calls === 1, "invalid response did not reach scoring boundary");
+    assert(invalidScoringEvidence.handoff === null, "invalid scoring input created a handoff");
+    assert(invalidScoringEvidence.dateNowCalls === 0, "invalid scoring input captured a timestamp");
+    assert(invalidScoringEvidence.saveCalls.length === 0, "invalid scoring input reached history");
+    assert((await evaluate("localStorage.length")) === 0, "invalid scoring input wrote history");
+
+    const failedSaveCases = [
+        {
+            label: "storage-unavailable",
+            mode: "storage-unavailable",
+            outcome: { ok: false, reason: "storage-unavailable" },
+            seed: null,
+        },
+        {
+            label: "malformed history",
+            mode: "delegate",
+            outcome: { ok: false, reason: "invalid-stored-data" },
+            seed: "{malformed",
+        },
+        {
+            label: "explicit non-success",
+            mode: "explicit-failure",
+            outcome: { ok: false, reason: "unexpected-failure" },
+            seed: null,
+        },
+        {
+            label: "unexpected throw",
+            mode: "throw",
+            outcome: null,
+            seed: null,
+        },
+    ];
+    for (const failureCase of failedSaveCases) {
+        await navigate(testUrl, waitForQuestionnaire);
+        await evaluate("localStorage.clear()");
+        if (failureCase.seed !== null) {
+            await evaluate(
+                `localStorage.setItem(${JSON.stringify(storageKey)}, ${JSON.stringify(failureCase.seed)})`,
+            );
+        }
+        const failedCompletion = await completeCurrentQuestionnaireAndAssertResult(
+            [4, 3, 2, 1, 0, 4],
+            14,
+            "at-or-above-13",
+            {
+                saveMode: failureCase.mode,
+                expectedSaveOutcome: failureCase.outcome,
+                expectHistoryUnchanged: true,
+            },
+        );
+        assertResultPresentation(
+            failedCompletion.state,
+            14,
+            "at-or-above-13",
+        );
+        const failedRawHistory = failedCompletion.state.rawHistory;
+        await pointerClick("[data-take-test-again]");
+        await waitForQuestionnaire();
+        await assertFreshQuestionnaire(`${failureCase.label} retake`);
+        assert(
+            (await evaluate(`localStorage.getItem(${JSON.stringify(storageKey)})`)) ===
+                failedRawHistory,
+            `${failureCase.label} retake changed history`,
+        );
+    }
+
+    const twentyRecords = Array.from({ length: 20 }, (_, index) => ({
+        score: index,
+        timestamp: index + 1,
+    }));
+    await navigate(testUrl, waitForQuestionnaire);
+    await evaluate(
+        `localStorage.setItem(${JSON.stringify(storageKey)}, ${JSON.stringify(JSON.stringify(twentyRecords))})`,
+    );
+    const retainedCompletion = await completeCurrentQuestionnaireAndAssertResult(
+        [4, 3, 2, 1, 0, 4],
+        14,
+        "at-or-above-13",
+    );
+    const retainedRecords = JSON.parse(retainedCompletion.state.rawHistory);
+    assert(retainedRecords.length === 20, "submission bypassed the 20-result boundary limit");
+    assert(
+        JSON.stringify(retainedRecords.slice(0, -1)) ===
+            JSON.stringify(twentyRecords.slice(1)),
+        "submission did not delegate oldest-record retention to the history boundary",
+    );
 
     await submitAndAssertResult([2, 2, 2, 2, 2, 2], 12, "below-13");
     await navigate(testUrl, waitForQuestionnaire);
@@ -621,6 +981,7 @@ try {
                 request.postData === null &&
                 !request.url.includes("question-") &&
                 !request.url.includes("4%2C4%2C4%2C1%2C0%2C0") &&
+                !request.url.includes("4%2C3%2C2%2C1%2C0%2C4") &&
                 !request.url.includes("2%2C2%2C2%2C2%2C2%2C2"),
         ),
         "answers were transmitted in a request, URL, or request body",
