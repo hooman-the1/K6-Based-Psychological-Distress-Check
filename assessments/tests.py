@@ -95,16 +95,85 @@ class QuestionnaireContentTests(SimpleTestCase):
                 self.assertNotIn(prohibited_claim, exposed_text.lower())
 
 
+class HomePageTests(SimpleTestCase):
+    def test_home_page_shows_only_its_approved_content_and_actions(self):
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "assessments/base.html")
+        self.assertTemplateUsed(response, "assessments/home.html")
+        self.assertContains(
+            response,
+            "<h1>K6-Based Psychological Distress Check</h1>",
+            count=1,
+            html=True,
+        )
+        self.assertContains(
+            response,
+            "Answer six short questions about how you have felt over the past 30 days.",
+            count=1,
+        )
+        self.assertContains(
+            response,
+            f'<a href="{reverse("test")}">Start Test</a>',
+            count=1,
+            html=True,
+        )
+        self.assertContains(
+            response,
+            f'<a href="{reverse("history")}">View History</a>',
+            count=1,
+            html=True,
+        )
+        self.assertContains(
+            response,
+            f"""
+            <main class="page-shell">
+                <h1>K6-Based Psychological Distress Check</h1>
+                <p>Answer six short questions about how you have felt over the past 30 days.</p>
+                <a href="{reverse("test")}">Start Test</a>
+                <a href="{reverse("history")}">View History</a>
+            </main>
+            """,
+            count=1,
+            html=True,
+        )
+
+
 class PageRouteTests(SimpleTestCase):
     pages = (
-        ("home", "/", "assessments/home.html", "Home"),
-        ("test", "/test", "assessments/test.html", "Test"),
-        ("result", "/result", "assessments/result.html", "Result"),
-        ("history", "/history", "assessments/history.html", "History"),
+        (
+            "home",
+            "/",
+            "assessments/home.html",
+            "K6-Based Psychological Distress Check",
+            "Home | K6-Based Psychological Distress Check",
+        ),
+        (
+            "test",
+            "/test",
+            "assessments/test.html",
+            "Test",
+            "Test | K6-Based Psychological Distress Check",
+        ),
+        (
+            "result",
+            "/result",
+            "assessments/result.html",
+            "Result",
+            "Result | K6-Based Psychological Distress Check",
+        ),
+        (
+            "history",
+            "/history",
+            "assessments/history.html",
+            "History",
+            "History | K6-Based Psychological Distress Check",
+        ),
     )
 
     def test_each_page_route_renders_its_template(self):
-        for route_name, path, template_name, heading in self.pages:
+        for route_name, path, template_name, heading, document_title in self.pages:
             with self.subTest(route_name=route_name):
                 response = self.client.get(path)
 
@@ -115,12 +184,12 @@ class PageRouteTests(SimpleTestCase):
                 self.assertContains(response, f"<h1>{heading}</h1>", html=True)
                 self.assertContains(
                     response,
-                    f"<title>{heading} | K6-Based Psychological Distress Check</title>",
+                    f"<title>{document_title}</title>",
                     html=True,
                 )
 
     def test_each_page_uses_the_shared_mobile_document_shell(self):
-        for route_name, path, _, _ in self.pages:
+        for route_name, path, _, _, _ in self.pages:
             with self.subTest(route_name=route_name):
                 response = self.client.get(path)
 
