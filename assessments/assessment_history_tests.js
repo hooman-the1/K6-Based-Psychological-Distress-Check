@@ -46,6 +46,12 @@ const createHistory = (storedValue = null) => {
     return { history: createAssessmentHistory(port), port };
 };
 
+const createResults = (count, firstTimestamp = 1000) =>
+    Array.from({ length: count }, (_, index) => ({
+        score: index % 25,
+        timestamp: firstTimestamp + index,
+    }));
+
 describe("AssessmentHistory", () => {
     test("exposes only the two non-throwing result-object operations", () => {
         const { history } = createHistory();
@@ -161,6 +167,121 @@ describe("AssessmentHistory", () => {
             port.value,
             '[{"score":3,"timestamp":1000},{"score":4,"timestamp":1000},{"score":3,"timestamp":1000}]',
         );
+    });
+
+    test("grows histories through the exact 19-to-20 boundary without eviction", () => {
+        for (let storedCount = 0; storedCount <= 19; storedCount += 1) {
+            const storedResults = createResults(storedCount);
+            const storedValue = storedCount === 0 ? null : JSON.stringify(storedResults);
+            const { history, port } = createHistory(storedValue);
+            const newResult = {
+                score: 24,
+                timestamp: 2000 + storedCount,
+            };
+
+            assert.deepEqual(history.saveResult(newResult), { ok: true });
+            assert.deepEqual(JSON.parse(port.value), [...storedResults, newResult]);
+            assert.equal(JSON.parse(port.value).length, storedCount + 1);
+        }
+    });
+
+    test("evicts the chronologically oldest candidate when a full history is saved", () => {
+        const storedResults = createResults(20);
+        const { history, port } = createHistory(JSON.stringify(storedResults));
+        const newestResult = { score: 20, timestamp: 3000 };
+
+        assert.deepEqual(history.saveResult(newestResult), { ok: true });
+        assert.equal(
+            port.value,
+            JSON.stringify([...storedResults.slice(1), newestResult]),
+        );
+        assert.deepEqual(history.getResults(), {
+            ok: true,
+            results: [...storedResults.slice(1), newestResult],
+        });
+    });
+
+    test("orders out-of-order saves and immediately evicts an older new candidate", () => {
+        const initialResults = [
+            { score: 6, timestamp: 6000 },
+            { score: 2, timestamp: 2000 },
+            { score: 4, timestamp: 4000 },
+        ];
+        const { history, port } = createHistory(JSON.stringify(initialResults));
+
+        assert.deepEqual(history.saveResult({ score: 3, timestamp: 3000 }), {
+            ok: true,
+        });
+        assert.equal(
+            port.value,
+            '[{"score":2,"timestamp":2000},{"score":3,"timestamp":3000},{"score":4,"timestamp":4000},{"score":6,"timestamp":6000}]',
+        );
+
+        const fullResults = createResults(20, 10000);
+        const fullHistory = createHistory(JSON.stringify(fullResults));
+        assert.deepEqual(
+            fullHistory.history.saveResult({ score: 24, timestamp: 1 }),
+            { ok: true },
+        );
+        assert.equal(fullHistory.port.value, JSON.stringify(fullResults));
+        assert.equal(fullHistory.port.writes.length, 1);
+    });
+
+    test("uses insertion order to retain later equal-timestamp cutoff candidates", () => {
+        const cutoffTies = [
+            { score: 1, timestamp: 1000 },
+            { score: 2, timestamp: 1000 },
+            { score: 3, timestamp: 1000 },
+        ];
+        const newerResults = createResults(17, 2000);
+        const { history, port } = createHistory(
+            JSON.stringify([...cutoffTies, ...newerResults]),
+        );
+        const newTie = { score: 4, timestamp: 1000 };
+
+        assert.deepEqual(history.saveResult(newTie), { ok: true });
+        assert.deepEqual(JSON.parse(port.value), [
+            cutoffTies[1],
+            cutoffTies[2],
+            newTie,
+            ...newerResults,
+        ]);
+    });
+
+    test("retains identical and same-calendar-date results as distinct records", () => {
+        const sameDayMorning = { score: 12, timestamp: 1788652800000 };
+        const identicalLater = { score: 12, timestamp: 1788696000000 };
+        const { history, port } = createHistory(JSON.stringify([sameDayMorning]));
+
+        assert.deepEqual(history.saveResult(identicalLater), { ok: true });
+        assert.deepEqual(history.saveResult(identicalLater), { ok: true });
+        assert.deepEqual(JSON.parse(port.value), [
+            sameDayMorning,
+            identicalLater,
+            identicalLater,
+        ]);
+    });
+
+    test("reads oversized valid histories without mutation and compacts on save", () => {
+        const persistedResults = createResults(21).reverse();
+        const storedValue = JSON.stringify(persistedResults);
+        const { history, port } = createHistory(storedValue);
+        const expectedRead = createResults(21).slice(1);
+
+        assert.deepEqual(history.getResults(), {
+            ok: true,
+            results: expectedRead,
+        });
+        assert.equal(port.value, storedValue);
+        assert.deepEqual(port.writes, []);
+
+        const newestResult = { score: 21, timestamp: 3000 };
+        assert.deepEqual(history.saveResult(newestResult), { ok: true });
+        assert.equal(
+            port.value,
+            JSON.stringify([...createResults(21).slice(2), newestResult]),
+        );
+        assert.equal(JSON.parse(port.value).length, 20);
     });
 
     test("returns fresh plain records oldest-first and keeps insertion order on ties", () => {

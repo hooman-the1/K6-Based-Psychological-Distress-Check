@@ -128,12 +128,22 @@ try {
     const requestsBeforeOperations = client.networkRequests.length;
     const firstSnapshot = await evaluate(`(() => {
         const apiKeys = Object.keys(window.AssessmentHistory);
-        const first = window.AssessmentHistory.saveResult({ score: 3, timestamp: 3000 });
-        const second = window.AssessmentHistory.saveResult({ score: 8, timestamp: 1000 });
-        const sameTimestamp = window.AssessmentHistory.saveResult({ score: 9, timestamp: 1000 });
+        const candidates = [
+            { score: 0, timestamp: 3000 },
+            { score: 1, timestamp: 1000 },
+            { score: 2, timestamp: 1000 },
+            ...Array.from({ length: 17 }, (_, index) => ({
+                score: index + 3,
+                timestamp: (index + 4) * 1000,
+            })),
+            { score: 20, timestamp: 21000 },
+        ];
+        const saves = candidates.map((candidate) =>
+            window.AssessmentHistory.saveResult(candidate),
+        );
         return {
             apiKeys,
-            saves: [first, second, sameTimestamp],
+            saves,
             results: window.AssessmentHistory.getResults(),
             raw: localStorage.getItem(${JSON.stringify(storageKey)}),
             localStorageKeys: Object.keys(localStorage),
@@ -144,13 +154,18 @@ try {
     })()`);
     await delay(100);
 
+    const expectedRecords = [
+        { score: 2, timestamp: 1000 },
+        { score: 0, timestamp: 3000 },
+        ...Array.from({ length: 17 }, (_, index) => ({
+            score: index + 3,
+            timestamp: (index + 4) * 1000,
+        })),
+        { score: 20, timestamp: 21000 },
+    ];
     const expectedResults = {
         ok: true,
-        results: [
-            { score: 8, timestamp: 1000 },
-            { score: 9, timestamp: 1000 },
-            { score: 3, timestamp: 3000 },
-        ],
+        results: expectedRecords,
     };
     assert(
         JSON.stringify(firstSnapshot.apiKeys) === JSON.stringify(["getResults", "saveResult"]),
@@ -165,9 +180,8 @@ try {
         "real localStorage results are not oldest-first with stable ties",
     );
     assert(
-        firstSnapshot.raw ===
-            '[{"score":8,"timestamp":1000},{"score":9,"timestamp":1000},{"score":3,"timestamp":3000}]',
-        "real localStorage value is not exact canonical JSON",
+        firstSnapshot.raw === JSON.stringify(expectedRecords),
+        "real localStorage did not retain exact canonical 20-result JSON",
     );
     assert(
         JSON.stringify(firstSnapshot.localStorageKeys) === JSON.stringify([storageKey]),
