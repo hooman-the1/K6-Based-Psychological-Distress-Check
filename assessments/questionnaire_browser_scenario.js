@@ -122,7 +122,8 @@ const snapshot = () =>
                 ? [...step.querySelectorAll("button")].map((button) => button.textContent.trim())
                 : [],
             checkedValue: step?.querySelector('input[type="radio"]:checked')?.value ?? null,
-            checkedCount: document.querySelectorAll('input[type="radio"]:checked').length,
+            checkedCount: step?.querySelectorAll('input[type="radio"]:checked').length ?? 0,
+            totalCheckedCount: document.querySelectorAll('input[type="radio"]:checked').length,
             nextDisabled: nextButton?.disabled ?? null,
             nextMatchesDisabled: nextButton?.matches(":disabled") ?? null,
             nextOpacity: nextButton ? getComputedStyle(nextButton).opacity : null,
@@ -355,6 +356,27 @@ const assertNewQuestionIsGated = (state, number) => {
     );
 };
 
+const assertRestoredAnswer = (state, number, expectedValue, totalAnswers) => {
+    verifyStep(state, number);
+    assert(
+        state.checkedValue === expectedValue,
+        `step ${number}: expected restored response ${expectedValue}, got ${state.checkedValue}`,
+    );
+    assert(state.checkedCount === 1, `step ${number}: expected one visible response`);
+    assert(
+        state.totalCheckedCount === totalAnswers,
+        `step ${number}: expected ${totalAnswers} saved responses, got ${state.totalCheckedCount}`,
+    );
+    if (number < 6) {
+        assert(state.nextDisabled === false, `step ${number}: restored answer did not enable Next`);
+        assert(
+            state.nextMatchesDisabled === false,
+            `step ${number}: restored Next still matches :disabled`,
+        );
+        assert(state.nextOpacity === "1", `step ${number}: restored Next looks disabled`);
+    }
+};
+
 try {
     await client.send("Runtime.enable");
     await client.send("Page.enable");
@@ -472,6 +494,25 @@ try {
         state.historyLength === questionnaireHistoryLength,
         "pointer-activated Next changed browser history",
     );
+
+    assert(
+        await focus(
+            '[data-question-step="2"] [data-questionnaire-back]',
+        ),
+        "question 2 Back must accept focus without an answer",
+    );
+    await pressEnter();
+    state = await snapshot();
+    assertRestoredAnswer(state, 1, "4", 1);
+    assert(
+        state.historyLength === questionnaireHistoryLength,
+        "keyboard-activated Back changed browser history",
+    );
+    await pointerClick(
+        '[data-question-step="1"] [data-questionnaire-next]',
+    );
+    state = await snapshot();
+    assertNewQuestionIsGated(state, 2);
 
     let gatedQuestionState = state;
     assert(
@@ -635,14 +676,15 @@ try {
     );
     assertSelectedBorderIsUnique(state, 4, "question 6 arrow-selected card");
 
+    const expectedAnswers = ["4", "1", "2", "0", "3", "4"];
+    assert(state.totalCheckedCount === 6, "all six answers must be saved");
+
     for (let number = 5; number >= 1; number -= 1) {
         await pointerClick(
             '[data-question-step]:not([hidden]) [data-questionnaire-back]',
         );
         state = await snapshot();
-        verifyStep(state, number);
-        assert(state.checkedCount === 0, `step ${number}: temporary answer remained checked`);
-        assert(state.nextDisabled === true, `step ${number}: Next is not gated after Back`);
+        assertRestoredAnswer(state, number, expectedAnswers[number - 1], 6);
     }
     assert(
         (await evaluate(
@@ -651,20 +693,59 @@ try {
         "question 1 must have no Back action",
     );
 
-    await pointerClick(
-        '[data-question-step="1"] .response-option:nth-of-type(2)',
-    );
-    await pointerClick(
-        '[data-question-step]:not([hidden]) [data-questionnaire-next]',
-    );
+    for (let number = 2; number <= 6; number += 1) {
+        const previousNumber = number - 1;
+        if (previousNumber === 1) {
+            assert(
+                await focus(
+                    '[data-question-step="1"] [data-questionnaire-next]',
+                ),
+                "restored question 1 Next must accept focus",
+            );
+            await pressEnter();
+        } else {
+            await pointerClick(
+                '[data-question-step]:not([hidden]) [data-questionnaire-next]',
+            );
+        }
+        state = await snapshot();
+        assertRestoredAnswer(state, number, expectedAnswers[number - 1], 6);
+
+        if (number === 3) {
+            await pointerClick(
+                '[data-question-step="3"] .response-option:nth-of-type(5)',
+            );
+            state = await snapshot();
+            expectedAnswers[2] = "4";
+            assertRestoredAnswer(state, 3, expectedAnswers[2], 6);
+        }
+    }
+
+    for (let number = 5; number >= 1; number -= 1) {
+        await pointerClick(
+            '[data-question-step]:not([hidden]) [data-questionnaire-back]',
+        );
+        state = await snapshot();
+        assertRestoredAnswer(state, number, expectedAnswers[number - 1], 6);
+    }
+
+    for (let number = 2; number <= 6; number += 1) {
+        await pointerClick(
+            '[data-question-step]:not([hidden]) [data-questionnaire-next]',
+        );
+        state = await snapshot();
+        assertRestoredAnswer(state, number, expectedAnswers[number - 1], 6);
+    }
+
     await client.send("Page.reload", { ignoreCache: true });
     await waitForQuestionnaire();
     state = await snapshot();
     verifyStep(state, 1);
-    assert(state.checkedCount === 0, "reload must reset all answers");
+    assert(state.checkedCount === 0, "reload must reset the visible answer");
+    assert(state.totalCheckedCount === 0, "reload must reset all answers");
 
     await pointerClick(
-        '[data-question-step="1"] .response-option:nth-of-type(4)',
+        '[data-question-step="1"] .response-option:nth-of-type(2)',
     );
     await pointerClick(
         '[data-question-step]:not([hidden]) [data-questionnaire-next]',
@@ -675,7 +756,8 @@ try {
     await waitForQuestionnaire();
     state = await snapshot();
     verifyStep(state, 1);
-    assert(state.checkedCount === 0, "route revisit must reset all answers");
+    assert(state.checkedCount === 0, "route revisit must reset the visible answer");
+    assert(state.totalCheckedCount === 0, "route revisit must reset all answers");
     assert(state.localStorageLength === 0, "questionnaire wrote localStorage");
     assert(state.sessionStorageLength === 0, "questionnaire wrote sessionStorage");
     assert(state.cookie === "", "questionnaire wrote a cookie");

@@ -16,22 +16,12 @@ if (form) {
             );
         }
     };
-
     const showStep = (stepNumber) => {
         currentStep = stepNumber;
         steps.forEach((step, index) => {
             step.hidden = index !== currentStep;
         });
         updateNextButtonState();
-    };
-
-    const clearCurrentResponse = () => {
-        const selectedResponse = steps[currentStep].querySelector(
-            'input[type="radio"]:checked',
-        );
-        if (selectedResponse) {
-            selectedResponse.checked = false;
-        }
     };
 
     form.reset();
@@ -54,7 +44,6 @@ if (form) {
             return;
         }
 
-        clearCurrentResponse();
         if (nextButton) {
             showStep(Math.min(currentStep + 1, steps.length - 1));
         } else {
