@@ -15,6 +15,10 @@ const expectedChoices = [
     "Most of the time",
     "All of the time",
 ];
+const expectedHelperText = {
+    3: "Restless or fidgety means finding it hard to relax or stay still.",
+    5: "This means ordinary things felt harder or more tiring to do than usual.",
+};
 
 const assert = (condition, message) => {
     if (!condition) {
@@ -110,6 +114,9 @@ const snapshot = () =>
             ? [...step.querySelectorAll(".response-option")]
             : [];
         const nextButton = step?.querySelector("[data-questionnaire-next]");
+        const helperButton = step?.querySelector("[data-question-helper]");
+        const helperCopy = step?.querySelector("[data-question-helper-copy]");
+        const helperStyle = helperCopy ? getComputedStyle(helperCopy) : null;
         return {
             visibleStepCount: visibleSteps.length,
             number: step ? Number(step.dataset.questionStep) : null,
@@ -127,6 +134,32 @@ const snapshot = () =>
             nextDisabled: nextButton?.disabled ?? null,
             nextMatchesDisabled: nextButton?.matches(":disabled") ?? null,
             nextOpacity: nextButton ? getComputedStyle(nextButton).opacity : null,
+            helperButtonCount: step?.querySelectorAll("[data-question-helper]").length ?? 0,
+            helperCopyCount: step?.querySelectorAll("[data-question-helper-copy]").length ?? 0,
+            helperButtonType: helperButton?.type ?? null,
+            helperButtonLabel: helperButton?.textContent.trim() ?? null,
+            helperExpanded: helperButton?.getAttribute("aria-expanded") ?? null,
+            helperControls: helperButton?.getAttribute("aria-controls") ?? null,
+            helperCopyId: helperCopy?.id ?? null,
+            helperCopyText: helperCopy?.textContent.trim() ?? null,
+            helperCopyHidden: helperCopy?.hidden ?? null,
+            helperCopyDisplay: helperStyle?.display ?? null,
+            helperCopyAnimationName: helperStyle?.animationName ?? null,
+            helperCopyTransitionDuration: helperStyle?.transitionDuration ?? null,
+            helperIsInline:
+                Boolean(helperButton) &&
+                helperButton.nextElementSibling === helperCopy &&
+                helperCopy.nextElementSibling === step.querySelector(".response-options"),
+            allHelperButtonCounts: [...document.querySelectorAll("[data-question-step]")].map(
+                (question) => question.querySelectorAll("[data-question-helper]").length,
+            ),
+            allHelperCopyCounts: [...document.querySelectorAll("[data-question-step]")].map(
+                (question) => question.querySelectorAll("[data-question-helper-copy]").length,
+            ),
+            allCheckedValues: [...document.querySelectorAll("[data-question-step]")].map(
+                (question) => question.querySelector('input[type="radio"]:checked')?.value ?? null,
+            ),
+            openDialogCount: document.querySelectorAll("dialog[open], [role=dialog]").length,
             cardStyles: cards.map((card) => {
                 const bounds = card.getBoundingClientRect();
                 const style = getComputedStyle(card);
@@ -186,8 +219,11 @@ const verifyStep = (state, number) => {
         `step ${number}: wrong ordered choices`,
     );
 
-    const expectedControls =
+    const navigationControls =
         number === 1 ? ["Next"] : number === 6 ? ["Back"] : ["Back", "Next"];
+    const expectedControls = expectedHelperText[number]
+        ? ["What does this mean?", ...navigationControls]
+        : navigationControls;
     assert(
         JSON.stringify(state.controls) === JSON.stringify(expectedControls),
         `step ${number}: wrong controls`,
@@ -199,6 +235,52 @@ const verifyStep = (state, number) => {
                 style.animationName === "none",
         ),
         `step ${number}: answer cards must not animate or transition`,
+    );
+
+    if (expectedHelperText[number]) {
+        assert(state.helperButtonCount === 1, `step ${number}: expected one helper control`);
+        assert(state.helperCopyCount === 1, `step ${number}: expected one helper copy element`);
+        assert(state.helperButtonType === "button", `step ${number}: helper is not type=button`);
+        assert(
+            state.helperButtonLabel === "What does this mean?",
+            `step ${number}: wrong helper control label`,
+        );
+        assert(
+            state.helperControls === `question-${number}-helper`,
+            `step ${number}: helper control targets the wrong element`,
+        );
+        assert(
+            state.helperCopyId === state.helperControls,
+            `step ${number}: helper copy ID does not match aria-controls`,
+        );
+        assert(
+            state.helperCopyText === expectedHelperText[number],
+            `step ${number}: wrong helper copy`,
+        );
+        assert(state.helperIsInline, `step ${number}: helper copy is not inline before choices`);
+        assert(state.openDialogCount === 0, `step ${number}: helper opened a dialog`);
+    } else {
+        assert(state.helperButtonCount === 0, `step ${number}: unexpected helper control`);
+        assert(state.helperCopyCount === 0, `step ${number}: unexpected helper copy`);
+    }
+};
+
+const assertHelperCollapsed = (state, number) => {
+    verifyStep(state, number);
+    assert(state.helperExpanded === "false", `step ${number}: helper is not collapsed`);
+    assert(state.helperCopyHidden === true, `step ${number}: collapsed helper copy is not hidden`);
+    assert(state.helperCopyDisplay === "none", `step ${number}: collapsed helper copy is visible`);
+};
+
+const assertHelperExpanded = (state, number) => {
+    verifyStep(state, number);
+    assert(state.helperExpanded === "true", `step ${number}: helper is not expanded`);
+    assert(state.helperCopyHidden === false, `step ${number}: expanded helper copy is hidden`);
+    assert(state.helperCopyDisplay !== "none", `step ${number}: expanded helper copy is invisible`);
+    assert(
+        state.helperCopyTransitionDuration === "0s" &&
+            state.helperCopyAnimationName === "none",
+        `step ${number}: helper expansion must not animate or transition`,
     );
 };
 
@@ -273,6 +355,25 @@ const assertQuestionUnchanged = (before, after, context) => {
     );
     assert(after.locationHref === before.locationHref, `${context}: URL changed`);
     assert(after.submitCount === before.submitCount, `${context}: form submitted`);
+};
+
+const assertHelperPreservedQuestionnaire = (before, after, context) => {
+    assertQuestionUnchanged(before, after, context);
+    assert(after.checkedValue === before.checkedValue, `${context}: visible answer changed`);
+    assert(after.checkedCount === before.checkedCount, `${context}: visible answer count changed`);
+    assert(
+        after.totalCheckedCount === before.totalCheckedCount,
+        `${context}: saved answer count changed`,
+    );
+    assert(
+        JSON.stringify(after.allCheckedValues) === JSON.stringify(before.allCheckedValues),
+        `${context}: saved answers changed`,
+    );
+    assert(after.nextDisabled === before.nextDisabled, `${context}: Next gating changed`);
+    assert(
+        after.nextMatchesDisabled === before.nextMatchesDisabled,
+        `${context}: Next disabled semantics changed`,
+    );
 };
 
 const nonBorderStyleProperties = [
@@ -398,6 +499,14 @@ try {
 
     let state = await snapshot();
     assertNewQuestionIsGated(state, 1);
+    assert(
+        JSON.stringify(state.allHelperButtonCounts) === JSON.stringify([0, 0, 1, 0, 1, 0]),
+        "helper controls must exist only on questions 3 and 5",
+    );
+    assert(
+        JSON.stringify(state.allHelperCopyCounts) === JSON.stringify([0, 0, 1, 0, 1, 0]),
+        "helper copy must exist only on questions 3 and 5",
+    );
     assert(state.documentWidth === 320, "questionnaire must not overflow 320px");
     assert(
         state.cardStyles.every(
@@ -544,17 +653,37 @@ try {
     await pressEnter();
     state = await snapshot();
     assertNewQuestionIsGated(state, 3);
+    assertHelperCollapsed(state, 3);
 
     gatedQuestionState = state;
+    await pointerClick(
+        '[data-question-step="3"] [data-question-helper]',
+    );
+    state = await snapshot();
+    assertHelperExpanded(state, 3);
+    assertHelperPreservedQuestionnaire(
+        gatedQuestionState,
+        state,
+        "question 3 pointer helper activation",
+    );
+
     assert(
         await focus(
             '[data-question-step="3"] .response-option:nth-of-type(2) input',
         ),
         "question 3 radio must accept focus",
     );
+    state = await snapshot();
+    assertHelperExpanded(state, 3);
+    assertHelperPreservedQuestionnaire(
+        gatedQuestionState,
+        state,
+        "question 3 focus change",
+    );
     await pressSpace();
     let selectedState = await snapshot();
     assert(selectedState.checkedValue === "1", "Space did not select question 3 response");
+    assertHelperExpanded(selectedState, 3);
     assertQuestionUnchanged(
         gatedQuestionState,
         selectedState,
@@ -582,6 +711,21 @@ try {
     );
     assertSelectedBorderIsUnique(state, 2, "arrow-selected card");
     assert(state.nextDisabled === false, "ArrowRight selection did not enable Next");
+    assertHelperExpanded(state, 3);
+
+    assert(
+        await focus('[data-question-step="3"] [data-question-helper]'),
+        "question 3 helper must accept focus",
+    );
+    const expandedQuestionThreeState = await snapshot();
+    await pressSpace();
+    state = await snapshot();
+    assertHelperExpanded(state, 3);
+    assertHelperPreservedQuestionnaire(
+        expandedQuestionThreeState,
+        state,
+        "question 3 Space helper reactivation",
+    );
 
     assert(
         await focus(
@@ -606,6 +750,7 @@ try {
     );
     state = await snapshot();
     assertNewQuestionIsGated(state, 5);
+    assertHelperCollapsed(state, 5);
 
     gatedQuestionState = state;
     await pointerClick(
@@ -615,6 +760,21 @@ try {
     assert(state.checkedValue === "3", "question 5 pointer selection failed");
     assertQuestionUnchanged(gatedQuestionState, state, "question 5 pointer selection");
     assert(state.nextDisabled === false, "question 5 Next remained disabled");
+    assertHelperCollapsed(state, 5);
+
+    assert(
+        await focus('[data-question-step="5"] [data-question-helper]'),
+        "question 5 helper must accept focus",
+    );
+    const answeredQuestionFiveState = await snapshot();
+    await pressEnter();
+    state = await snapshot();
+    assertHelperExpanded(state, 5);
+    assertHelperPreservedQuestionnaire(
+        answeredQuestionFiveState,
+        state,
+        "question 5 Enter helper activation",
+    );
     await pointerClick(
         '[data-question-step="5"] [data-questionnaire-next]',
     );
@@ -628,6 +788,45 @@ try {
         )) === null,
         "question 6 must have no Next or submission action",
     );
+
+    await pointerClick(
+        '[data-question-step="6"] [data-questionnaire-back]',
+    );
+    state = await snapshot();
+    assertRestoredAnswer(state, 5, "3", 5);
+    assertHelperCollapsed(state, 5);
+
+    assert(
+        await focus('[data-question-step="5"] [data-question-helper]'),
+        "returned question 5 helper must accept focus",
+    );
+    const returnedQuestionFiveState = await snapshot();
+    await pressSpace();
+    state = await snapshot();
+    assertHelperExpanded(state, 5);
+    assertHelperPreservedQuestionnaire(
+        returnedQuestionFiveState,
+        state,
+        "question 5 Space helper activation",
+    );
+
+    await pointerClick(
+        '[data-question-step="5"] [data-questionnaire-back]',
+    );
+    state = await snapshot();
+    assertRestoredAnswer(state, 4, "0", 5);
+    await pointerClick(
+        '[data-question-step="4"] [data-questionnaire-next]',
+    );
+    state = await snapshot();
+    assertRestoredAnswer(state, 5, "3", 5);
+    assertHelperCollapsed(state, 5);
+    await pointerClick(
+        '[data-question-step="5"] [data-questionnaire-next]',
+    );
+    state = await snapshot();
+    verifyStep(state, 6);
+    assert(state.checkedCount === 0, "question 6 answer changed during helper navigation");
 
     const questionSixInitialState = state;
     await pointerClick(
@@ -685,6 +884,24 @@ try {
         );
         state = await snapshot();
         assertRestoredAnswer(state, number, expectedAnswers[number - 1], 6);
+        if (number === 5 || number === 3) {
+            assertHelperCollapsed(state, number);
+        }
+        if (number === 3) {
+            assert(
+                await focus('[data-question-step="3"] [data-question-helper]'),
+                "returned question 3 helper must accept focus",
+            );
+            const returnedQuestionThreeState = await snapshot();
+            await pressEnter();
+            state = await snapshot();
+            assertHelperExpanded(state, 3);
+            assertHelperPreservedQuestionnaire(
+                returnedQuestionThreeState,
+                state,
+                "question 3 Enter helper activation",
+            );
+        }
     }
     assert(
         (await evaluate(
@@ -710,6 +927,9 @@ try {
         }
         state = await snapshot();
         assertRestoredAnswer(state, number, expectedAnswers[number - 1], 6);
+        if (number === 3 || number === 5) {
+            assertHelperCollapsed(state, number);
+        }
 
         if (number === 3) {
             await pointerClick(
