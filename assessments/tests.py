@@ -3,6 +3,7 @@ from pathlib import Path
 
 from django.apps import apps
 from django.contrib.staticfiles import finders
+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import SimpleTestCase
 from django.urls import reverse
 
@@ -330,6 +331,13 @@ class QuestionnairePageTests(SimpleTestCase):
             stylesheet,
             r"progress\s*\{[^}]*transition:\s*none;[^}]*\}",
         )
+
+
+class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
+    def test_questionnaire_interactions_execute_in_a_real_browser(self):
+        result = self.run_questionnaire_browser_scenario()
+
+        self.assertEqual(result, "questionnaire browser scenario passed")
 
 
 class PageRouteTests(SimpleTestCase):
