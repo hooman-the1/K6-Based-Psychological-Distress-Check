@@ -1,5 +1,13 @@
+import json
+import shutil
+import socket
+import subprocess
+import tempfile
+import time
+import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
+from unittest import skipUnless
 
 from django.apps import apps
 from django.contrib.staticfiles import finders
@@ -334,10 +342,97 @@ class QuestionnairePageTests(SimpleTestCase):
 
 
 class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
+    edge_path = Path(
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+    )
+    node_path = shutil.which("node")
+
+    @skipUnless(edge_path.is_file() and node_path, "requires Edge and Node.js")
     def test_questionnaire_interactions_execute_in_a_real_browser(self):
         result = self.run_questionnaire_browser_scenario()
 
         self.assertEqual(result, "questionnaire browser scenario passed")
+
+    def run_questionnaire_browser_scenario(self):
+        debugging_port = self.get_available_port()
+        test_url = f"{self.live_server_url}{reverse('test')}"
+        home_url = f"{self.live_server_url}{reverse('home')}"
+
+        with tempfile.TemporaryDirectory(prefix="questionnaire-browser-") as profile:
+            browser = subprocess.Popen(
+                [
+                    self.edge_path,
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--no-first-run",
+                    f"--remote-debugging-port={debugging_port}",
+                    "--remote-allow-origins=*",
+                    f"--user-data-dir={profile}",
+                    "about:blank",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                websocket_url = self.wait_for_page_websocket(debugging_port)
+                completed = subprocess.run(
+                    [
+                        self.node_path,
+                        str(
+                            Path(__file__).with_name(
+                                "questionnaire_browser_scenario.js"
+                            )
+                        ),
+                        websocket_url,
+                        test_url,
+                        home_url,
+                    ],
+                    capture_output=True,
+                    check=False,
+                    encoding="utf-8",
+                    timeout=30,
+                )
+            finally:
+                browser.terminate()
+                try:
+                    browser.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    browser.kill()
+                    browser.wait(timeout=5)
+
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=f"Browser scenario failed:\n{completed.stderr}",
+        )
+        return completed.stdout.strip()
+
+    @staticmethod
+    def get_available_port():
+        with socket.socket() as available_socket:
+            available_socket.bind(("127.0.0.1", 0))
+            return available_socket.getsockname()[1]
+
+    def wait_for_page_websocket(self, debugging_port):
+        endpoint = f"http://127.0.0.1:{debugging_port}/json/list"
+        deadline = time.monotonic() + 10
+
+        while time.monotonic() < deadline:
+            try:
+                with urllib.request.urlopen(endpoint, timeout=1) as response:
+                    targets = json.load(response)
+                page_target = next(
+                    target for target in targets if target.get("type") == "page"
+                )
+                return page_target["webSocketDebuggerUrl"]
+            except (
+                OSError,
+                StopIteration,
+                json.JSONDecodeError,
+            ):
+                time.sleep(0.05)
+
+        self.fail("Edge did not expose the questionnaire page to the test")
 
 
 class PageRouteTests(SimpleTestCase):
