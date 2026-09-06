@@ -1,3 +1,4 @@
+from html.parser import HTMLParser
 from pathlib import Path
 
 from django.apps import apps
@@ -6,6 +7,80 @@ from django.test import SimpleTestCase
 from django.urls import reverse
 
 from assessments.questionnaire_content import QUESTIONNAIRE_CONTENT
+
+
+class QuestionnaireMarkupParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.steps = []
+        self.current_step = None
+        self.text_target = None
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "section" and "data-question-step" in attributes:
+            self.current_step = {
+                "number": int(attributes["data-question-step"]),
+                "hidden": "hidden" in attributes,
+                "count": "",
+                "progress": None,
+                "prompt": "",
+                "groups": 0,
+                "choices": [],
+                "radios": [],
+                "controls": [],
+            }
+            self.steps.append(self.current_step)
+        elif self.current_step is not None and tag == "p":
+            if "question-count" in attributes.get("class", "").split():
+                self.text_target = "count"
+        elif self.current_step is not None and tag == "progress":
+            self.current_step["progress"] = attributes
+        elif self.current_step is not None and tag == "h2":
+            self.text_target = "prompt"
+        elif self.current_step is not None and tag == "fieldset":
+            self.current_step["groups"] += 1
+        elif self.current_step is not None and tag == "label":
+            self.current_step["choices"].append(
+                {"text": "", "class": attributes.get("class", "")}
+            )
+            self.text_target = "choice"
+        elif (
+            self.current_step is not None
+            and tag == "input"
+            and attributes.get("type") == "radio"
+        ):
+            self.current_step["radios"].append(attributes)
+        elif self.current_step is not None and tag == "button":
+            action = next(
+                (
+                    key.removeprefix("data-questionnaire-")
+                    for key in attributes
+                    if key.startswith("data-questionnaire-")
+                ),
+                None,
+            )
+            if action is not None:
+                self.current_step["controls"].append(action)
+
+    def handle_endtag(self, tag):
+        if tag in {"p", "h2", "label"}:
+            self.text_target = None
+        elif tag == "section":
+            self.current_step = None
+
+    def handle_data(self, data):
+        if self.current_step is None or self.text_target is None:
+            return
+
+        normalized_text = " ".join(data.split())
+        if not normalized_text:
+            return
+
+        if self.text_target == "choice":
+            self.current_step["choices"][-1]["text"] += normalized_text
+        else:
+            self.current_step[self.text_target] += normalized_text
 
 
 class AssessmentsAppTests(SimpleTestCase):
@@ -137,6 +212,123 @@ class HomePageTests(SimpleTestCase):
             """,
             count=1,
             html=True,
+        )
+
+
+class QuestionnairePageTests(SimpleTestCase):
+    def get_rendered_steps(self):
+        response = self.client.get(reverse("test"))
+        parser = QuestionnaireMarkupParser()
+        parser.feed(response.content.decode())
+        return response, parser.steps
+
+    def test_test_page_starts_with_only_the_first_question_visible(self):
+        response, steps = self.get_rendered_steps()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(steps[0]["hidden"])
+        self.assertEqual(steps[0]["count"], "Question 1 of 6")
+        self.assertEqual(
+            steps[0]["prompt"],
+            "Over the past 30 days, how often did you feel nervous?",
+        )
+        self.assertTrue(all(step["hidden"] for step in steps[1:]))
+
+    def test_each_step_renders_the_authoritative_prompt_scale_and_progress(self):
+        response, steps = self.get_rendered_steps()
+
+        expected_labels = [
+            option.label for option in QUESTIONNAIRE_CONTENT.response_options
+        ]
+        self.assertEqual(len(steps), 6)
+        for number, (step, question) in enumerate(
+            zip(steps, QUESTIONNAIRE_CONTENT.questions, strict=True),
+            start=1,
+        ):
+            with self.subTest(number=number):
+                self.assertEqual(step["number"], number)
+                self.assertEqual(step["count"], f"Question {number} of 6")
+                self.assertEqual(step["progress"]["value"], str(number))
+                self.assertEqual(step["progress"]["max"], "6")
+                self.assertEqual(
+                    step["progress"]["aria-label"], "Questionnaire progress"
+                )
+                self.assertEqual(step["prompt"], question.prompt)
+                self.assertEqual(step["groups"], 1)
+                self.assertEqual(
+                    [choice["text"] for choice in step["choices"]],
+                    expected_labels,
+                )
+                self.assertTrue(
+                    all(
+                        "response-option" in choice["class"].split()
+                        for choice in step["choices"]
+                    )
+                )
+                self.assertEqual(
+                    [radio["value"] for radio in step["radios"]],
+                    [str(value) for value in range(5)],
+                )
+                self.assertTrue(
+                    all(
+                        radio["name"] == f"question-{number}"
+                        for radio in step["radios"]
+                    )
+                )
+        self.assertContains(response, 'type="radio"', count=30)
+
+    def test_each_new_test_page_render_has_a_fresh_initial_state(self):
+        first_response, first_steps = self.get_rendered_steps()
+        self.client.get(reverse("home"))
+        second_response, second_steps = self.get_rendered_steps()
+
+        for response in (first_response, second_response):
+            self.assertNotContains(response, " checked")
+        for steps in (first_steps, second_steps):
+            self.assertFalse(steps[0]["hidden"])
+            self.assertTrue(all(step["hidden"] for step in steps[1:]))
+
+    def test_each_step_has_only_its_temporary_navigation_controls(self):
+        _, steps = self.get_rendered_steps()
+
+        self.assertEqual(steps[0]["controls"], ["next"])
+        for step in steps[1:5]:
+            with self.subTest(number=step["number"]):
+                self.assertEqual(step["controls"], ["back", "next"])
+        self.assertEqual(steps[5]["controls"], ["back"])
+
+    def test_static_assets_define_in_memory_boundary_safe_immediate_stepping(self):
+        script = Path(finders.find("assessments/app.js")).read_text(encoding="utf-8")
+        stylesheet = Path(finders.find("assessments/app.css")).read_text(
+            encoding="utf-8"
+        )
+
+        for behavior in (
+            'querySelector("[data-questionnaire]")',
+            'querySelectorAll("[data-question-step]")',
+            'form.reset()',
+            "currentStep = 0",
+            "Math.min(currentStep + 1, steps.length - 1)",
+            "Math.max(currentStep - 1, 0)",
+        ):
+            with self.subTest(behavior=behavior):
+                self.assertIn(behavior, script)
+        for prohibited_persistence in (
+            "localStorage",
+            "sessionStorage",
+            "document.cookie",
+            "history.pushState",
+            "history.replaceState",
+        ):
+            with self.subTest(prohibited_persistence=prohibited_persistence):
+                self.assertNotIn(prohibited_persistence, script)
+        self.assertRegex(
+            stylesheet,
+            r"\.response-option\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[^}]*\}",
+        )
+        self.assertRegex(
+            stylesheet,
+            r"progress\s*\{[^}]*transition:\s*none;[^}]*\}",
         )
 
 
