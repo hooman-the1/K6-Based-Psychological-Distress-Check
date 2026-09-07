@@ -21,6 +21,7 @@
                     <h2>{{ question.prompt }}</h2>
                     {% if question.helper_text %}
                         <button
+                            class="button button--text"
                             type="button"
                             data-question-helper
                             aria-expanded="false"
@@ -48,12 +49,12 @@
                     </fieldset>
                     <div class="questionnaire-controls">
                         {% if not forloop.first %}
-                            <button type="button" data-questionnaire-back>Back</button>
+                            <button class="button button--secondary" type="button" data-questionnaire-back>Back</button>
                         {% endif %}
                         {% if forloop.last %}
-                            <button type="submit" data-questionnaire-submit disabled>See my result</button>
+                            <button class="button button--primary" type="submit" data-questionnaire-submit disabled>See my result</button>
                         {% else %}
-                            <button type="button" data-questionnaire-next disabled>Next</button>
+                            <button class="button button--primary" type="button" data-questionnaire-next disabled>Next</button>
                         {% endif %}
                     </div>
                 </section>
@@ -74,7 +75,7 @@
                 <h2 id="result-resources-heading">Resources</h2>
                 <ul data-active-result-resources></ul>
             </section>
-            <a href="{% url 'test' %}" data-take-test-again>Take test again</a>
+            <a class="button button--primary" href="{% url 'test' %}" data-take-test-again>Take test again</a>
         </section>
     </template>
 {% endblock %}

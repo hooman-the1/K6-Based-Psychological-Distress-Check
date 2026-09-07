@@ -5,7 +5,9 @@
 {% block content %}
     <h1>K6-Based Psychological Distress Check</h1>
     <p>Answer six short questions about how you have felt over the past 30 days.</p>
-    <a href="{% url 'test' %}">Start Test</a>
-    <a href="{% url 'history' %}" data-history-link hidden>View History</a>
+    <div class="action-stack">
+        <a class="button button--primary" href="{% url 'test' %}">Start Test</a>
+        <a class="button button--secondary" href="{% url 'history' %}" data-history-link hidden>View History</a>
+    </div>
     <p data-history-unavailable hidden>Saved history is unavailable in this browser.</p>
 {% endblock %}

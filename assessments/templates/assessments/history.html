@@ -7,7 +7,7 @@
     <p data-history-unavailable hidden>Saved history is unavailable in this browser.</p>
     <section data-history-empty hidden>
         <p>No saved results yet.</p>
-        <a href="{% url 'test' %}">Take Test</a>
+        <a class="button button--primary" href="{% url 'test' %}">Take Test</a>
     </section>
     <figure data-history-chart-container hidden>
         <h2>Score trend</h2>
@@ -34,5 +34,5 @@
         </figcaption>
     </figure>
     <ul data-history-results hidden></ul>
-    <button type="button" data-clear-history hidden>Clear All History</button>
+    <button class="button button--danger" type="button" data-clear-history hidden>Clear All History</button>
 {% endblock %}

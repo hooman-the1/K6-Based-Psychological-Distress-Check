@@ -70,3 +70,15 @@ transition. Run it with:
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_history_availability_executes_in_a_real_browser -v 2
 ```
+
+The shared visual-foundation scenario drives genuine Microsoft Edge through CDP
+and measures Home, questionnaire, rendered Result, and empty/populated/unavailable
+History states at 320x900, 375x900, and 768x1024. It verifies computed tokens,
+shell geometry, typography, shared control states and target sizes, wrapping,
+motion, local-only requests, and horizontal containment. It writes review
+screenshots to the system temporary directory under
+`k6-issue20-visual-foundation`. Run it with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_shared_visual_foundation_executes_in_a_real_browser -v 2
+```

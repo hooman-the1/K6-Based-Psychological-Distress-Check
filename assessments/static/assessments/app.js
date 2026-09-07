@@ -254,6 +254,7 @@ if (form) {
             const link = document.createElement("a");
             link.href = resource.url;
             link.textContent = resource.label;
+            link.classList.add("link");
             item.append(link);
             resourceList.append(item);
         }

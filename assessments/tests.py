@@ -199,13 +199,13 @@ class HomePageTests(SimpleTestCase):
         )
         self.assertContains(
             response,
-            f'<a href="{reverse("test")}">Start Test</a>',
+            f'<a class="button button--primary" href="{reverse("test")}">Start Test</a>',
             count=1,
             html=True,
         )
         self.assertContains(
             response,
-            f'<a href="{reverse("history")}" data-history-link hidden>View History</a>',
+            f'<a class="button button--secondary" href="{reverse("history")}" data-history-link hidden>View History</a>',
             count=1,
             html=True,
         )
@@ -221,8 +221,10 @@ class HomePageTests(SimpleTestCase):
             <main class="page-shell">
                 <h1>K6-Based Psychological Distress Check</h1>
                 <p>Answer six short questions about how you have felt over the past 30 days.</p>
-                <a href="{reverse("test")}">Start Test</a>
-                <a href="{reverse("history")}" data-history-link hidden>View History</a>
+                <div class="action-stack">
+                    <a class="button button--primary" href="{reverse("test")}">Start Test</a>
+                    <a class="button button--secondary" href="{reverse("history")}" data-history-link hidden>View History</a>
+                </div>
                 <p data-history-unavailable hidden>Saved history is unavailable in this browser.</p>
             </main>
             """,
@@ -314,7 +316,7 @@ class QuestionnairePageTests(SimpleTestCase):
         self.assertEqual(steps[5]["controls"], ["back", "submit"])
         self.assertContains(
             response,
-            '<button type="submit" data-questionnaire-submit disabled>See my result</button>',
+            '<button class="button button--primary" type="submit" data-questionnaire-submit disabled>See my result</button>',
             count=1,
             html=True,
         )

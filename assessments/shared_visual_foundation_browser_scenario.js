@@ -349,7 +349,10 @@ const assertFoundation = (state, width, context) => {
         JSON.stringify(state.tokens) === JSON.stringify(expectedTokens),
         `${context}: shared tokens are missing or wrong`,
     );
-    assert(state.colorScheme === "only light", `${context}: color scheme is not only light`);
+    assert(
+        state.colorScheme.split(" ").sort().join(" ") === "light only",
+        `${context}: color scheme is not only light`,
+    );
     assert(state.body.backgroundColor === colors.page, `${context}: page color is wrong`);
     assert(state.body.color === colors.text, `${context}: default text color is wrong`);
     assert(state.body.fontFamily === expectedFontFamily, `${context}: font stack is wrong`);
@@ -367,7 +370,7 @@ const assertFoundation = (state, width, context) => {
         approximatelyEqual(state.shell.rect.width, expectedShellWidth) &&
             approximatelyEqual(state.shell.rect.left, expectedGutter) &&
             approximatelyEqual(width - state.shell.rect.right, expectedGutter),
-        `${context}: shell width or gutters are wrong`,
+        `${context}: shell width or gutters are wrong (${JSON.stringify(state.shell.rect)})`,
     );
     assert(
         approximatelyEqual(Number.parseFloat(state.shell.paddingLeft), expectedPadding) &&
@@ -422,8 +425,21 @@ const assertFoundation = (state, width, context) => {
             control.style.rect.left >= 0 && control.style.rect.right <= width,
             `${context}: ${control.selectorKey} leaves the viewport`,
         );
+        if (control.classNames.includes("link")) {
+            assert(
+                ["flex", "inline-flex"].includes(control.style.display) &&
+                    control.style.alignItems === "center" &&
+                    control.style.justifyContent === "center" &&
+                    control.style.minHeight === "44px" &&
+                    control.style.color === colors.primary &&
+                    control.style.textDecorationLine.includes("underline") &&
+                    control.style.textUnderlineOffset === "2px",
+                `${context}: ${control.selectorKey} shared link presentation is wrong`,
+            );
+            continue;
+        }
         assert(
-            control.style.display === "inline-flex" &&
+            ["flex", "inline-flex"].includes(control.style.display) &&
                 control.style.alignItems === "center" &&
                 control.style.justifyContent === "center" &&
                 control.style.fontSize === "16px" &&
@@ -433,7 +449,7 @@ const assertFoundation = (state, width, context) => {
                 control.style.minHeight === "44px" &&
                 control.style.borderWidth === "1px" &&
                 control.style.borderRadius === "8px",
-            `${context}: ${control.selectorKey} shared box model is wrong`,
+            `${context}: ${control.selectorKey} shared box model is wrong (${JSON.stringify(control.style)})`,
         );
     }
     for (const group of state.actionGroups) {
@@ -533,18 +549,12 @@ const assertFocusVisible = async (selector, context) => {
 };
 
 const captureScreenshot = async (name) => {
-    const metrics = await client.send("Page.getLayoutMetrics");
+    await evaluate("document.scrollingElement.scrollTop = 0");
+    await delay(20);
     const screenshot = await client.send("Page.captureScreenshot", {
         format: "png",
-        captureBeyondViewport: true,
+        captureBeyondViewport: false,
         fromSurface: true,
-        clip: {
-            x: 0,
-            y: 0,
-            width: metrics.cssContentSize.width,
-            height: metrics.cssContentSize.height,
-            scale: 1,
-        },
     });
     await writeFile(
         path.join(screenshotDirectory, `${name}.png`),
@@ -589,7 +599,7 @@ try {
     assert(
         approximatelyEqual(state.directChildGaps[0].gap, 16) &&
             approximatelyEqual(state.directChildGaps[1].gap, 24),
-        "Home does not follow the 16px/24px page rhythm",
+        `Home does not follow the 16px/24px page rhythm (${JSON.stringify(state.directChildGaps)})`,
     );
     await captureScreenshot("home-320");
     await setPointerOver('a[href="/test"]');
