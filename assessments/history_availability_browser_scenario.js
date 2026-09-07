@@ -541,6 +541,11 @@ try {
     state = await snapshot();
     assert(state.getResultsCalls === 0, "empty-state Take Test caused a history read");
     assert(state.saveResultCalls === 0, "empty-state Take Test created a history record");
+    assert(
+        JSON.stringify(await evaluate("window.__issue16OriginalBoundary.getResults()")) ===
+            JSON.stringify({ ok: true, results: [] }),
+        "empty-state Take Test created a persisted history record",
+    );
 
     await evaluate(`(() => {
         const seededResults = ${JSON.stringify(seededResults)};
