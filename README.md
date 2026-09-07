@@ -64,10 +64,11 @@ The unfinished questionnaire and the active Result are memory-only, so leaving
 or refreshing discards them. Clearing History removes only the application
 History key, leaving unrelated browser storage untouched.
 
-If browser storage is unavailable, malformed, denied, full, or throws while
-reading, saving, or clearing, the user can still start, complete, score, and view
-a Result. History access and presentation become unavailable with a non-blocking
-notice, and a failed save is not recreated elsewhere.
+If stored History is malformed, or browser storage is unavailable, denied, full,
+or throws while reading, saving, or clearing, the user can still start,
+complete, score, and view a Result. History access and presentation become
+unavailable with a non-blocking notice, and a failed save is not recreated
+elsewhere.
 
 ## Privacy and external resources
 
