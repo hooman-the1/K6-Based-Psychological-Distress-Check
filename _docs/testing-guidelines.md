@@ -54,3 +54,12 @@ scenario with:
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_assessment_history_uses_real_same_origin_local_storage -v 2
 ```
+
+The History availability and presentation scenario uses real same-origin
+`localStorage` for empty and populated states, injects read failures only at the
+application-owned history boundary, and fixes the browser timezone through CDP
+before checking local date/time output. Run it with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_history_availability_executes_in_a_real_browser -v 2
+```

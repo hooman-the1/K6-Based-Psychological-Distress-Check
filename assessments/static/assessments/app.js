@@ -6,6 +6,7 @@ const historyUnavailableNotice = document.querySelector(
 if (historyUnavailableNotice) {
     const historyLink = document.querySelector("[data-history-link]");
     const historyEmptyState = document.querySelector("[data-history-empty]");
+    const historyResultsList = document.querySelector("[data-history-results]");
     let historyResults = null;
 
     try {
@@ -25,6 +26,49 @@ if (historyUnavailableNotice) {
     if (historyEmptyState) {
         historyEmptyState.hidden =
             !isHistoryAvailable || historyResults.length !== 0;
+    }
+    if (historyResultsList) {
+        const hasResults = isHistoryAvailable && historyResults.length !== 0;
+        historyResultsList.hidden = !hasResults;
+
+        if (hasResults) {
+            const dateFormatter = new Intl.DateTimeFormat("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+            });
+            const timeFormatter = new Intl.DateTimeFormat("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+            });
+            const appendValue = (row, value) => {
+                const visibleValue = document.createElement("p");
+                visibleValue.textContent = value;
+                row.append(visibleValue);
+            };
+
+            for (const result of [...historyResults].reverse()) {
+                const timeParts = timeFormatter.formatToParts(result.timestamp);
+                const timePart = (type) =>
+                    timeParts.find((part) => part.type === type)?.value;
+                const row = document.createElement("li");
+                row.dataset.historyResult = "";
+                appendValue(row, dateFormatter.format(result.timestamp));
+                appendValue(
+                    row,
+                    `${timePart("hour")}:${timePart("minute")} ${timePart("dayPeriod")}`,
+                );
+                appendValue(row, `${result.score} / 24`);
+                appendValue(
+                    row,
+                    result.score >= 13
+                        ? "At or above the cutoff"
+                        : "Below the cutoff",
+                );
+                historyResultsList.append(row);
+            }
+        }
     }
 }
 
