@@ -486,6 +486,20 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
 
         self.assertEqual(result, "shared visual foundation browser scenario passed")
 
+    @skipUnless(edge_path.is_file() and node_path, "requires Edge and Node.js")
+    def test_questionnaire_and_result_visuals_execute_in_a_real_browser(self):
+        screenshot_directory = (
+            Path(tempfile.gettempdir())
+            / "k6-issue21-questionnaire-result-visuals"
+        )
+        result = self.run_questionnaire_browser_scenario(
+            script_name="questionnaire_result_visuals_browser_scenario.js",
+            success_message="questionnaire and Result visual scenario passed",
+            additional_arguments=(str(screenshot_directory),),
+        )
+
+        self.assertEqual(result, "questionnaire and Result visual scenario passed")
+
     def run_questionnaire_browser_scenario(
         self,
         script_name="questionnaire_browser_scenario.js",
