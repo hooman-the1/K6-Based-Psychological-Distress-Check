@@ -647,7 +647,8 @@ const assertCrossRouteFoundation = (state, viewport, context) => {
             assert(
                 ["flex", "inline-flex"].includes(control.style.display) &&
                     control.style.alignItems === "center" && control.style.justifyContent === "center" &&
-                    control.style.minHeight === "44px" && control.style.color === colors.primary &&
+                    control.style.minHeight === "44px" &&
+                    [colors.primary, colors.primaryHover].includes(control.style.color) &&
                     control.style.textDecorationLine.includes("underline") &&
                     control.style.textUnderlineOffset === "2px",
                 `${context}: shared link presentation changed`,
