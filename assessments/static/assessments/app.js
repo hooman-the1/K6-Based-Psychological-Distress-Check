@@ -1,4 +1,25 @@
 const form = document.querySelector("[data-questionnaire]");
+const historyUnavailableNotice = document.querySelector(
+    "[data-history-unavailable]",
+);
+
+if (historyUnavailableNotice) {
+    const historyLink = document.querySelector("[data-history-link]");
+    let isHistoryAvailable = false;
+
+    try {
+        const readResult = window.AssessmentHistory.getResults();
+        isHistoryAvailable =
+            readResult?.ok === true && Array.isArray(readResult.results);
+    } catch {
+        isHistoryAvailable = false;
+    }
+
+    if (historyLink) {
+        historyLink.hidden = !isHistoryAvailable;
+    }
+    historyUnavailableNotice.hidden = isHistoryAvailable;
+}
 
 if (form) {
     const steps = Array.from(form.querySelectorAll("[data-question-step]"));

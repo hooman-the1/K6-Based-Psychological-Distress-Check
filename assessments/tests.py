@@ -205,7 +205,13 @@ class HomePageTests(SimpleTestCase):
         )
         self.assertContains(
             response,
-            f'<a href="{reverse("history")}">View History</a>',
+            f'<a href="{reverse("history")}" data-history-link hidden>View History</a>',
+            count=1,
+            html=True,
+        )
+        self.assertContains(
+            response,
+            "<p data-history-unavailable hidden>Saved history is unavailable in this browser.</p>",
             count=1,
             html=True,
         )
@@ -216,7 +222,8 @@ class HomePageTests(SimpleTestCase):
                 <h1>K6-Based Psychological Distress Check</h1>
                 <p>Answer six short questions about how you have felt over the past 30 days.</p>
                 <a href="{reverse("test")}">Start Test</a>
-                <a href="{reverse("history")}">View History</a>
+                <a href="{reverse("history")}" data-history-link hidden>View History</a>
+                <p data-history-unavailable hidden>Saved history is unavailable in this browser.</p>
             </main>
             """,
             count=1,
