@@ -99,6 +99,80 @@ class AssessmentsAppTests(SimpleTestCase):
         self.assertEqual(app_config.name, "assessments")
 
 
+class ReleaseDocumentationTests(SimpleTestCase):
+    def test_readme_defines_release_setup_and_browser_boundaries(self):
+        readme_path = Path(__file__).resolve().parents[1] / "README.md"
+        readme = readme_path.read_text(encoding="utf-8")
+
+        required_sections = (
+            "## Product scope",
+            "## Routes and result lifecycle",
+            "## Prerequisites",
+            "## Install, verify, and run",
+            "## Browser data and storage failures",
+            "## Privacy and external resources",
+        )
+        for section in required_sections:
+            with self.subTest(section=section):
+                self.assertIn(section, readme)
+        self.assertEqual(
+            sorted(readme.find(section) for section in required_sections),
+            [readme.find(section) for section in required_sections],
+        )
+
+        required_commands = (
+            "python -m venv .venv",
+            ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+            ".\\.venv\\Scripts\\python.exe manage.py check",
+            ".\\.venv\\Scripts\\python.exe manage.py test",
+            ".\\.venv\\Scripts\\python.exe manage.py runserver",
+        )
+        for command in required_commands:
+            with self.subTest(command=command):
+                self.assertIn(command, readme)
+        self.assertEqual(
+            sorted(readme.find(command) for command in required_commands),
+            [readme.find(command) for command in required_commands],
+        )
+
+        required_contracts = (
+            "frontend-only, mobile-first portfolio demo",
+            "K6-based",
+            "adapted wording",
+            "not the validated K6 instrument",
+            "not a diagnostic tool",
+            "not a replacement for professional care",
+            "`/`, `/test`, `/result`, and `/history`",
+            "`/result` is transient",
+            "Python 3.12 or newer",
+            "Node.js",
+            r"`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`",
+            "http://127.0.0.1:8000/",
+            "local development server, not a production deployment server",
+            "](_docs/testing-guidelines.md)",
+            "Django serves the local pages and static assets",
+            "There is no product API, server-side result persistence, account, authentication, database model, or cloud synchronization",
+            "`k6-based-distress-check.history.v1`",
+            "numeric `score` and integer `timestamp`",
+            "at most 20 records",
+            "Individual questionnaire answers are never saved",
+            "unfinished questionnaire and the active Result are memory-only",
+            "leaving or refreshing discards them",
+            "leaving unrelated browser storage untouched",
+            "unavailable, malformed, denied, full, or throws while reading, saving, or clearing",
+            "still start, complete, score, and view a Result",
+            "History access and presentation become unavailable",
+            "non-blocking notice",
+            "failed save is not recreated elsewhere",
+            "does not automatically send questionnaire answers, scores, timestamps, or History",
+            "server, analytics service, or telemetry service",
+            "user-directed visit to an external first-party website",
+        )
+        for contract in required_contracts:
+            with self.subTest(contract=contract):
+                self.assertIn(contract, readme)
+
+
 class QuestionnaireContentTests(SimpleTestCase):
     expected_questions = (
         "Over the past 30 days, how often did you feel nervous?",
