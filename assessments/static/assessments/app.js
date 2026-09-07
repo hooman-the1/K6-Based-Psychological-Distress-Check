@@ -7,6 +7,7 @@ if (form) {
     const resultTemplate = document.querySelector("[data-active-result-template]");
     let currentStep = 0;
     let activeResult = null;
+    let isSubmissionComplete = false;
 
     const updateForwardButtonState = () => {
         const currentQuestion = steps[currentStep];
@@ -49,6 +50,7 @@ if (form) {
 
     const showFreshQuestionnaire = () => {
         activeResult = null;
+        isSubmissionComplete = false;
         resetQuestionnaire();
         pageShell.replaceChildren(questionnairePage);
         document.title = "Test | K6-Based Psychological Distress Check";
@@ -129,6 +131,11 @@ if (form) {
 
     form.addEventListener("submit", (event) => {
         event.preventDefault();
+
+        if (isSubmissionComplete) {
+            return;
+        }
+
         const responses = steps.map((step) => {
             const selectedResponse = step.querySelector(
                 'input[type="radio"]:checked',
@@ -141,12 +148,22 @@ if (form) {
         }
 
         const score = window.K6Scoring.calculateK6Score(responses);
+        isSubmissionComplete = true;
         activeResult = Object.freeze({
             score: score.total,
             isAtOrAboveCutoff:
                 score.isAtOrAboveSeriousElevatedDistressThreshold,
         });
         form.reset();
+        const timestamp = Date.now();
+        try {
+            window.AssessmentHistory.saveResult({
+                score: activeResult.score,
+                timestamp,
+            });
+        } catch {
+            // The completed result remains available when history storage fails.
+        }
         showActiveResult();
         history.pushState(null, "", "/result");
     });
