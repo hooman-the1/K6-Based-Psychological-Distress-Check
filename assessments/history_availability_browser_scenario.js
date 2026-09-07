@@ -404,6 +404,7 @@ const snapshot = () =>
                     x: Number(point.getAttribute("cx")),
                     y: Number(point.getAttribute("cy")),
                     radius: Number(point.getAttribute("r")),
+                    fill: point.getAttribute("fill"),
                     namespace: point.namespaceURI,
                 })),
                 interactiveCount: chartContainer?.querySelectorAll(
@@ -604,10 +605,16 @@ const assertChart = (state, scores, context) => {
         `${context}: cutoff y coordinate is wrong`,
     );
     assert(Boolean(chart.cutoff.dash), `${context}: cutoff line is not dashed`);
-    assert(chart.cutoff.stroke !== "none", `${context}: cutoff line has no stroke`);
+    assert(
+        Boolean(chart.cutoff.stroke) && chart.cutoff.stroke !== "none",
+        `${context}: cutoff line has no stroke`,
+    );
     assert(chart.scoreLineCount === 1, `${context}: score polyline count is wrong`);
     assert(chart.scoreLineFill === "none", `${context}: score polyline is filled`);
-    assert(chart.scoreLineStroke !== "none", `${context}: score polyline has no stroke`);
+    assert(
+        Boolean(chart.scoreLineStroke) && chart.scoreLineStroke !== "none",
+        `${context}: score polyline has no stroke`,
+    );
     assert(chart.scoreLineVisible, `${context}: score polyline is hidden`);
     assert(chart.points.length === scores.length, `${context}: score point count is wrong`);
     for (let index = 0; index < chart.points.length; index += 1) {
@@ -617,6 +624,10 @@ const assertChart = (state, scores, context) => {
         assert(approximatelyEqual(point.y, expected.y), `${context}: point ${index} y is wrong`);
         assert(point.radius === 3, `${context}: point ${index} radius is wrong`);
         assert(point.visible, `${context}: point ${index} is hidden`);
+        assert(
+            Boolean(point.fill) && point.fill !== "none",
+            `${context}: point ${index} has no fill`,
+        );
         assert(
             point.namespace === "http://www.w3.org/2000/svg",
             `${context}: point ${index} was not created in the SVG namespace`,
