@@ -426,7 +426,7 @@ try {
     await evaluate(
         "window.__issue16OriginalBoundary.saveResult({ score: 12, timestamp: 1000 })",
     );
-    await client.send("Page.reload", { ignoreCache: true });
+    await client.send("Page.navigate", { url: homeUrl });
     await waitForInitializedPage("/", "K6-Based Psychological Distress Check", "available");
     state = await snapshot();
     assertAvailableHome(state, "populated history");

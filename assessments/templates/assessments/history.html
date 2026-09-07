@@ -5,4 +5,8 @@
 {% block content %}
     <h1>History</h1>
     <p data-history-unavailable hidden>Saved history is unavailable in this browser.</p>
+    <section data-history-empty hidden>
+        <p>No saved results yet.</p>
+        <a href="{% url 'test' %}">Take Test</a>
+    </section>
 {% endblock %}

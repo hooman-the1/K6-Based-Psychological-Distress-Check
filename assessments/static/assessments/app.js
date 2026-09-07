@@ -5,20 +5,27 @@ const historyUnavailableNotice = document.querySelector(
 
 if (historyUnavailableNotice) {
     const historyLink = document.querySelector("[data-history-link]");
-    let isHistoryAvailable = false;
+    const historyEmptyState = document.querySelector("[data-history-empty]");
+    let historyResults = null;
 
     try {
         const readResult = window.AssessmentHistory.getResults();
-        isHistoryAvailable =
-            readResult?.ok === true && Array.isArray(readResult.results);
+        if (readResult?.ok === true && Array.isArray(readResult.results)) {
+            historyResults = readResult.results;
+        }
     } catch {
-        isHistoryAvailable = false;
+        historyResults = null;
     }
 
+    const isHistoryAvailable = historyResults !== null;
     if (historyLink) {
         historyLink.hidden = !isHistoryAvailable;
     }
     historyUnavailableNotice.hidden = isHistoryAvailable;
+    if (historyEmptyState) {
+        historyEmptyState.hidden =
+            !isHistoryAvailable || historyResults.length !== 0;
+    }
 }
 
 if (form) {
