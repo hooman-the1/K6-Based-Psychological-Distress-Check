@@ -169,7 +169,31 @@
                 : { ...storageUnavailable };
         };
 
-        return Object.freeze({ getResults, saveResult });
+        const clearResults = () => {
+            let removeResult;
+            try {
+                removeResult = storagePort.remove(storageKey);
+            } catch {
+                return { ...storageUnavailable };
+            }
+            if (!removeResult || removeResult.ok !== true) {
+                return { ...storageUnavailable };
+            }
+
+            let verificationResult;
+            try {
+                verificationResult = storagePort.read(storageKey);
+            } catch {
+                return { ...storageUnavailable };
+            }
+            return verificationResult &&
+                verificationResult.ok === true &&
+                verificationResult.value === null
+                ? { ok: true }
+                : { ...storageUnavailable };
+        };
+
+        return Object.freeze({ getResults, saveResult, clearResults });
     };
 
     const createBrowserStoragePort = (browserScope) => ({
@@ -191,6 +215,18 @@
                     return storageUnavailable;
                 }
                 storage.setItem(key, value);
+                return { ok: true };
+            } catch {
+                return storageUnavailable;
+            }
+        },
+        remove(key) {
+            try {
+                const storage = browserScope.localStorage;
+                if (!storage) {
+                    return storageUnavailable;
+                }
+                storage.removeItem(key);
                 return { ok: true };
             } catch {
                 return storageUnavailable;

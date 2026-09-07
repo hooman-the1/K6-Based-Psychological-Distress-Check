@@ -1,6 +1,7 @@
 const [websocketUrl, pageUrl] = process.argv.slice(2);
 
 const storageKey = "k6-based-distress-check.history.v1";
+const unrelatedStorageKey = "unrelated.application.preference";
 
 const assert = (condition, message) => {
     if (!condition) {
@@ -123,7 +124,13 @@ try {
     await client.send("Network.enable");
     await client.send("Page.navigate", { url: pageUrl });
     await waitForHistory();
-    await evaluate("localStorage.clear()");
+    await evaluate(`(() => {
+        localStorage.clear();
+        localStorage.setItem(
+            ${JSON.stringify(unrelatedStorageKey)},
+            "preserve this value",
+        );
+    })()`);
 
     const requestsBeforeOperations = client.networkRequests.length;
     const firstSnapshot = await evaluate(`(() => {
@@ -168,7 +175,8 @@ try {
         results: expectedRecords,
     };
     assert(
-        JSON.stringify(firstSnapshot.apiKeys) === JSON.stringify(["getResults", "saveResult"]),
+        JSON.stringify(firstSnapshot.apiKeys) ===
+            JSON.stringify(["getResults", "saveResult", "clearResults"]),
         "window.AssessmentHistory exposes the wrong API",
     );
     assert(
@@ -184,7 +192,8 @@ try {
         "real localStorage did not retain exact canonical 20-result JSON",
     );
     assert(
-        JSON.stringify(firstSnapshot.localStorageKeys) === JSON.stringify([storageKey]),
+        JSON.stringify(firstSnapshot.localStorageKeys.sort()) ===
+            JSON.stringify([storageKey, unrelatedStorageKey].sort()),
         "history wrote an unexpected localStorage key",
     );
     assert(firstSnapshot.sessionStorageLength === 0, "history wrote sessionStorage");
@@ -220,6 +229,81 @@ try {
     assert(
         client.networkRequests.length === requestsAfterReload,
         "history read caused a post-load network request after reload",
+    );
+
+    const requestsBeforeClear = client.networkRequests.length;
+    const clearedSnapshot = await evaluate(`(() => {
+        const clearResult = window.AssessmentHistory.clearResults();
+        return {
+            clearResult,
+            results: window.AssessmentHistory.getResults(),
+            raw: localStorage.getItem(${JSON.stringify(storageKey)}),
+            unrelatedValue: localStorage.getItem(
+                ${JSON.stringify(unrelatedStorageKey)},
+            ),
+            localStorageKeys: Object.keys(localStorage),
+            sessionStorageLength: sessionStorage.length,
+            cookie: document.cookie,
+            historyState: history.state,
+        };
+    })()`);
+    await delay(100);
+
+    assert(
+        JSON.stringify(clearedSnapshot.clearResult) === '{"ok":true}',
+        "real localStorage clear did not report exact success",
+    );
+    assert(
+        JSON.stringify(clearedSnapshot.results) ===
+            JSON.stringify({ ok: true, results: [] }),
+        "getResults did not return empty success after clear",
+    );
+    assert(clearedSnapshot.raw === null, "clear left the history key present");
+    assert(
+        clearedSnapshot.unrelatedValue === "preserve this value",
+        "clear changed an unrelated localStorage value",
+    );
+    assert(
+        JSON.stringify(clearedSnapshot.localStorageKeys) ===
+            JSON.stringify([unrelatedStorageKey]),
+        "clear removed or created an unexpected localStorage key",
+    );
+    assert(clearedSnapshot.sessionStorageLength === 0, "clear wrote sessionStorage");
+    assert(clearedSnapshot.cookie === "", "clear wrote a cookie");
+    assert(clearedSnapshot.historyState === null, "clear wrote browser history state");
+    assert(
+        client.networkRequests.length === requestsBeforeClear,
+        "clear caused a post-load network request",
+    );
+
+    await client.send("Page.reload", { ignoreCache: true });
+    await waitForHistory();
+    const requestsAfterClearReload = client.networkRequests.length;
+    const clearedReloadSnapshot = await evaluate(`(() => ({
+        results: window.AssessmentHistory.getResults(),
+        raw: localStorage.getItem(${JSON.stringify(storageKey)}),
+        unrelatedValue: localStorage.getItem(
+            ${JSON.stringify(unrelatedStorageKey)},
+        ),
+    }))()`);
+    await delay(100);
+
+    assert(
+        JSON.stringify(clearedReloadSnapshot.results) ===
+            JSON.stringify({ ok: true, results: [] }),
+        "cleared history did not stay empty after reload",
+    );
+    assert(
+        clearedReloadSnapshot.raw === null,
+        "reload restored the cleared history key",
+    );
+    assert(
+        clearedReloadSnapshot.unrelatedValue === "preserve this value",
+        "reload lost the unrelated localStorage value",
+    );
+    assert(
+        client.networkRequests.length === requestsAfterClearReload,
+        "cleared-history read caused a post-load network request after reload",
     );
 
     console.log("assessment history browser scenario passed");
