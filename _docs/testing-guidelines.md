@@ -95,3 +95,19 @@ than pixel-diff fixtures. Run the scenario with:
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_questionnaire_and_result_visuals_execute_in_a_real_browser -v 2
 ```
+
+The History and cross-route visual scenario drives the genuine Edge/CDP
+live-server boundary at 320x900, 375x900, and 768x1024. It checks the exact
+History panel, SVG line/point, two-column row, Clear action, mutual-exclusion,
+motion, privacy, and document-scroll contracts for unavailable, empty, one,
+three, twenty, and both post-clear states. The same run audits the shared shell
+on Home, selected/helper/control Questionnaire states, and 12- and 13-point
+Results. It fixes the browser timezone through CDP and injects failures only at
+the application-owned history boundary. Non-golden cross-route screenshots are
+written under the system temporary directory
+`k6-issue22-history-cross-route-visuals`; they are review evidence, not
+pixel-diff fixtures. Run it with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_history_and_cross_route_visuals_execute_in_a_real_browser -v 2
+```

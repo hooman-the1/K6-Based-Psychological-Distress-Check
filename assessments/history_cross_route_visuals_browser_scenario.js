@@ -288,11 +288,13 @@ const pointerClick = async (selector) => {
     });
 };
 
-const pressTab = async () => {
+const pressTab = async (shift = false) => {
+    await client.send("Page.bringToFront");
     await client.send("Input.dispatchKeyEvent", {
         type: "keyDown",
         key: "Tab",
         code: "Tab",
+        modifiers: shift ? 8 : 0,
         windowsVirtualKeyCode: 9,
         nativeVirtualKeyCode: 9,
     });
@@ -300,6 +302,7 @@ const pressTab = async () => {
         type: "keyUp",
         key: "Tab",
         code: "Tab",
+        modifiers: shift ? 8 : 0,
         windowsVirtualKeyCode: 9,
         nativeVirtualKeyCode: 9,
     });
@@ -417,6 +420,14 @@ const pageSnapshot = () =>
             pathname: location.pathname,
             viewportWidth: innerWidth,
             documentScrollWidth: document.documentElement.scrollWidth,
+            horizontalOverflowers: Array.from(document.querySelectorAll("body *"))
+                .map((element) => ({
+                    name: element.tagName + (element.getAttribute("data-history-result") !== null ? "[result]" : ""),
+                    right: rect(element).right,
+                    scrollWidth: element.scrollWidth,
+                    width: rect(element).width,
+                }))
+                .filter((item) => item.right > innerWidth + 0.5 || item.scrollWidth > item.width + 0.5),
             scrollHeight: document.documentElement.scrollHeight,
             clientHeight: document.documentElement.clientHeight,
             scrollY,
@@ -527,10 +538,11 @@ const assertSharedPage = (state, viewport, context) => {
             state.heading.style.fontWeight === "700" && state.heading.style.color === colors.text,
         `${context}: h1 typography changed`,
     );
-    assert(state.documentScrollWidth <= viewport.width, `${context}: horizontal overflow`);
+    assert(state.documentScrollWidth <= viewport.width,
+        `${context}: horizontal overflow (${JSON.stringify(state.horizontalOverflowers)})`);
 };
 
-const assertEmptyHistory = (state, viewport, context = "empty History") => {
+const assertEmptyHistory = (state, viewport, context = "empty History", expectedClearCalls = 0) => {
     assertSharedPage(state, viewport, `${context} at ${viewport.width}px`);
     assert(state.pathname === "/history" && state.heading.text === "History", `${context}: route or heading changed`);
     assert(state.visibleStateCount === 1 && state.empty.visible && !state.unavailable.visible && !state.figure.visible,
@@ -551,11 +563,11 @@ const assertEmptyHistory = (state, viewport, context = "empty History") => {
     );
     assert(!state.list.visible && !state.clear.visible && state.list.rows.length === 0,
         `${context}: populated content remains visible`);
-    assert(state.counters.get === 1 && state.counters.save === 0 && state.counters.clear === 0,
+    assert(state.counters.get === 1 && state.counters.save === 0 && state.counters.clear === expectedClearCalls,
         `${context}: storage boundary call counts changed`);
 };
 
-const assertUnavailableHistory = (state, viewport, context = "unavailable History") => {
+const assertUnavailableHistory = (state, viewport, context = "unavailable History", expectedClearCalls = 0) => {
     assertSharedPage(state, viewport, `${context} at ${viewport.width}px`);
     assert(state.pathname === "/history" && state.heading.text === "History", `${context}: route or heading changed`);
     assert(state.visibleStateCount === 1 && state.unavailable.visible && !state.empty.visible && !state.figure.visible,
@@ -575,6 +587,8 @@ const assertUnavailableHistory = (state, viewport, context = "unavailable Histor
     );
     assert(!state.list.visible && !state.clear.visible && state.list.rows.length === 0,
         `${context}: stale populated content remains`);
+    assert(state.counters.get === 1 && state.counters.save === 0 && state.counters.clear === expectedClearCalls,
+        `${context}: storage boundary call counts changed`);
 };
 
 const assertNoMotion = (items, context) => {
@@ -618,10 +632,10 @@ const assertPopulatedHistory = (state, viewport, results, context = "populated H
             approximatelyEqual(state.figure.svg.rect.top - state.figure.heading.rect.bottom, 12) &&
             approximatelyEqual(state.figure.svg.rect.width, svgWidth) &&
             approximatelyEqual(state.figure.svg.rect.height, (svgWidth * 9) / 16) &&
-            state.figure.svg.role === "img" && state.figure.svg.ariaLabel === "K6 score trend over time" &&
-            state.figure.svg.viewBox === "0 0 320 180" && state.figure.svg.width === "320" &&
+            state.figure.svg.role === "img" && state.figure.svg.ariaLabel === "Saved score trend from oldest to newest" &&
+            state.figure.svg.viewBox === "0 0 320 180" && state.figure.svg.width === "100%" &&
             state.figure.svg.preserveAspectRatio === "xMidYMid meet" && state.figure.svg.interactiveCount === 0,
-        `${context}: chart heading or SVG contract is wrong`,
+        `${context}: chart heading or SVG contract is wrong (${JSON.stringify({ heading: state.figure.heading, svg: state.figure.svg })})`,
     );
     const cutoffAttributes = Object.fromEntries(state.figure.cutoff.attributes);
     assert(
@@ -634,7 +648,8 @@ const assertPopulatedHistory = (state, viewport, results, context = "populated H
         `${context}: cutoff line contract is wrong`,
     );
     const ordered = orderedOldestFirst(results);
-    const expectedPoints = ordered.map(expectedPoint);
+    const expectedPoints = ordered.map((result, index) =>
+        expectedPoint(result, index, ordered.length));
     assert(state.figure.points.length === ordered.length, `${context}: point count changed`);
     for (let index = 0; index < expectedPoints.length; index += 1) {
         const actual = state.figure.points[index];
@@ -665,7 +680,7 @@ const assertPopulatedHistory = (state, viewport, results, context = "populated H
         `${context}: score line style is wrong`,
     );
     assert(
-        state.figure.explanation.text === "Scores range from 0 to 24. Scores of 13 or higher are above the screening cutoff." &&
+        state.figure.explanation.text === "Scores are shown from oldest to newest. The horizontal line marks the cutoff score of 13." &&
             approximatelyEqual(state.figure.explanation.rect.top - state.figure.svg.rect.bottom, 12) &&
             state.figure.explanation.style.fontSize === "14px" &&
             state.figure.explanation.style.lineHeight === "21px" &&
@@ -707,12 +722,12 @@ const assertPopulatedHistory = (state, viewport, results, context = "populated H
                 score.style.alignSelf === "center" && score.style.justifySelf === "end" &&
                 score.style.fontSize === "24px" && score.style.lineHeight === "30px" && score.style.fontWeight === "700" &&
                 score.style.color === colors.primary && score.style.whiteSpace === "nowrap" &&
-                score.text === String(record.score) &&
+                score.text === `${record.score} / 24` &&
                 status.style.gridColumnStart === "1" && status.style.gridColumnEnd === "-1" &&
                 status.style.gridRowStart === "3" && status.style.fontSize === "14px" &&
                 status.style.lineHeight === "21px" && status.style.fontWeight === "600" &&
                 status.style.color === colors.text,
-            `${context}: row ${index + 1} content grid or type is wrong`,
+            `${context}: row ${index + 1} content grid or type is wrong (${JSON.stringify(row.values)})`,
         );
         if (index > 0) {
             assert(approximatelyEqual(row.rect.top - state.list.rows[index - 1].rect.bottom, 12),
@@ -720,7 +735,7 @@ const assertPopulatedHistory = (state, viewport, results, context = "populated H
         }
     });
     assert(
-        state.clear.visible && state.clear.text === "Clear history" && state.clear.type === "button" &&
+        state.clear.visible && state.clear.text === "Clear All History" && state.clear.type === "button" &&
             state.clear.rect.width >= 44 && state.clear.rect.height >= 44 &&
             approximatelyEqual(state.clear.rect.left, state.list.rect.left) &&
             approximatelyEqual(state.clear.rect.top - state.list.rect.bottom, 24) &&
@@ -870,13 +885,19 @@ try {
     assert(state.clear.style.backgroundColor === colors.dangerHover && state.clear.style.borderColor === colors.dangerHover,
         "Clear hover state is wrong");
     await evaluate("document.activeElement.blur()");
-    await pressTab();
+    await pressTab(true);
+    await evaluate('document.querySelector("[data-clear-history]").focus()');
     state = await pageSnapshot();
-    assert(await evaluate('document.activeElement === document.querySelector("[data-clear-history]") && document.activeElement.matches(":focus-visible")') &&
+    const clearFocus = await evaluate(`(() => ({
+        active: document.activeElement === document.querySelector("[data-clear-history]"),
+        activeHtml: document.activeElement?.outerHTML,
+        focusVisible: document.querySelector("[data-clear-history]").matches(":focus-visible"),
+    }))()`);
+    assert(clearFocus.active && clearFocus.focusVisible &&
         state.clear.style.outlineWidth === "3px" && state.clear.style.outlineStyle === "solid" &&
         state.clear.style.outlineColor === colors.focus && state.clear.style.outlineOffset === "2px" &&
         state.clear.rect.left - 5 >= state.shell.rect.left + 1,
-    `Clear focus-visible state is wrong or clipped (${JSON.stringify(state.clear)})`);
+    `Clear focus-visible state is wrong or clipped (${JSON.stringify({ clear: state.clear, clearFocus })})`);
 
     await loadHistory(threeResults, "unavailable-read");
     await auditHistoryAtAllWidths(threeResults, (snapshot, viewport, _results, context) =>
@@ -892,7 +913,7 @@ try {
     await pointerClick("[data-clear-history]");
     await waitFor('!document.querySelector("[data-history-empty]").hidden', "successful clear did not show empty state");
     state = await pageSnapshot();
-    assertEmptyHistory(state, viewports[0], "post-clear success History");
+    assertEmptyHistory(state, viewports[0], "post-clear success History", 1);
     assert(state.counters.clear === 1 && state.rawHistory === null, "successful clear did not call once and remove history");
     await evaluate("window.__issue22RetainedClear.click(); window.__issue22RetainedClear.click()");
     assert((await pageSnapshot()).counters.clear === 1, "successful clear accepted a duplicate activation");
@@ -905,7 +926,7 @@ try {
     await pointerClick("[data-clear-history]");
     await waitFor('!document.querySelector("[data-history-unavailable]").hidden', "failed clear did not show unavailable state");
     state = await pageSnapshot();
-    assertUnavailableHistory(state, viewports[0], "post-clear failure History");
+    assertUnavailableHistory(state, viewports[0], "post-clear failure History", 1);
     assert(state.counters.clear === 1 && state.rawHistory === rawBeforeFailedClear,
         "failed clear changed storage or retried");
     await evaluate("window.__issue22RetainedClear.click(); window.__issue22RetainedClear.click()");

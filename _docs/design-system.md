@@ -220,6 +220,36 @@ retains the shared 44px target and focus/hover states. Result components add no
 diagnostic or urgency treatment, icon, illustration, asset, gradient, animation,
 tooltip, or score-dependent guidance.
 
+## History components
+
+History uses one mutually exclusive unavailable, empty, or populated composition.
+The first visible state follows the page heading by 16px and fills the shell's
+content width. The unavailable notice uses 16px padding; the empty state uses
+24px padding and a 16px gap before its primary Take Test action. Both use the
+page-color background, shared border, and 8px radius.
+
+The populated figure uses the same neutral panel with 16px padding. Its semantic
+SVG follows the heading by 12px, fills the panel width, and preserves its 16:9
+view box. The cutoff line is a muted 1px non-scaling stroke with a `4 4` dash;
+the score line is a primary 2px non-scaling stroke with round caps and joins;
+and each primary score point has a 3-unit radius. The supporting 14px muted
+caption follows by 12px. These chart elements remain static and noninteractive.
+
+The newest-first result list follows the figure by 24px and uses a one-column
+grid with 12px gaps, no marker or padding, and no internal scrolling. Each
+surface row is a noninteractive two-column grid with 16px padding, a 16px column
+gap, a 4px row gap, and the shared border and 8px radius. Date and time occupy
+the first column; the 24px/1.25 weight-700 primary score spans the first two rows
+at inline-end; the 14px/1.5 weight-600 cutoff label spans both columns. Scores
+use tabular numerals. Duplicate records remain separate cards.
+
+Clear All History follows the list by 24px at inline-start and uses the shared
+danger action, including its 44px target, hover, and focus-visible states. Clear
+success switches to the empty panel; failure switches to the unavailable panel.
+Neither transition leaves stale chart, row, or Clear content visible. Long
+histories use document-only vertical scrolling, keep the final action reachable,
+and never introduce a component scrollbar or horizontal overflow.
+
 ## Motion and scope
 
 The default foundation has no transitions or animations on the shell, controls,
@@ -231,7 +261,6 @@ The foundation adds no logo, illustration, image, remote font or asset, advanced
 branding, dark theme, loading treatment, persistent header/navigation/footer,
 sidebar, overlay, or alternate desktop composition.
 
-History chart/list/state/Clear composition and final visual polish are deferred
-to #22. Shared and route-specific styling must not alter copy, semantics, hooks,
-routes, scoring, questionnaire behavior, Result behavior, resource destinations,
-or History/storage behavior.
+Shared and route-specific styling must not alter copy, semantics, hooks, routes,
+scoring, questionnaire behavior, Result behavior, resource destinations, or
+History/storage behavior.
