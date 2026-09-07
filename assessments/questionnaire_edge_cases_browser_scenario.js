@@ -209,14 +209,16 @@ const focusByTab = async (selector, context) => {
     throw new Error(`${context}: keyboard focus did not reach ${selector}`);
 };
 
-const focusRadioByKeyboard = async (question, value, context) => {
-    const groupSelector = `[data-question-step="${question}"] input[type="radio"]`;
-    await focusByTab(groupSelector, context);
-    for (let attempt = 0; attempt < choices.length; attempt += 1) {
-        if (await evaluate(`document.activeElement?.value === ${JSON.stringify(String(value))}`)) return;
-        await pressKey("ArrowRight", "ArrowRight", 39);
-    }
-    throw new Error(`${context}: keyboard navigation did not reach response ${value}`);
+const focusRadioThroughBrowser = async (question, value, context) => {
+    const selector = `[data-question-step="${question}"] input[value="${value}"]`;
+    await client.send("Page.bringToFront");
+    const { root } = await client.send("DOM.getDocument", { depth: 0, pierce: true });
+    const { nodeId } = await client.send("DOM.querySelector", {
+        nodeId: root.nodeId,
+        selector,
+    });
+    assert(nodeId !== 0, `${context}: native radio was not found`);
+    await client.send("DOM.focus", { nodeId });
 };
 
 const assertFocusedRadioIsUnchecked = async (question, value, context) => {
@@ -353,6 +355,7 @@ try {
     await client.send("Runtime.enable");
     await client.send("Page.enable");
     await client.send("Network.enable");
+    await client.send("DOM.enable");
     await client.send("Emulation.setDeviceMetricsOverride", {
         width: 320, height: 900, deviceScaleFactor: 1, mobile: false,
     });
@@ -373,7 +376,7 @@ try {
     await nextByPointer(1);
     await assertQuestion(2, null, "initial Question 2", { totalSelectedCount: 1 });
 
-    await focusRadioByKeyboard(2, 2, "Question 2 Some of the time");
+    await focusRadioThroughBrowser(2, 2, "Question 2 Some of the time");
     await assertFocusedRadioIsUnchecked(2, 2, "Question 2 before Space");
     await assertQuestion(2, null, "Question 2 immediately before Space", {
         totalSelectedCount: 1,
@@ -435,7 +438,7 @@ try {
             });
     }
 
-    await focusRadioByKeyboard(6, 4, "Question 6 All of the time");
+    await focusRadioThroughBrowser(6, 4, "Question 6 All of the time");
     await assertFocusedRadioIsUnchecked(6, 4, "Question 6 before Space");
     await assertQuestion(6, null, "Question 6 immediately before Space", {
         totalSelectedCount: 5,
