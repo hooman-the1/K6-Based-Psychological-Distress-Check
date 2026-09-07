@@ -122,10 +122,14 @@ describe("AssessmentHistory", () => {
                 removeResult: { ok: false, reason: "another-failure" },
             },
             { useRemoveResult: true, removeResult: undefined },
+            { removeMissing: true },
             { removeError: new Error("remove denied") },
         ]) {
             const port = new FakeHistoryStoragePort("stored history");
             Object.assign(port, failure);
+            if (failure.removeMissing) {
+                port.remove = undefined;
+            }
             const history = createAssessmentHistory(port);
 
             let clearResult;
@@ -133,7 +137,10 @@ describe("AssessmentHistory", () => {
                 clearResult = history.clearResults();
             });
             assert.deepEqual(clearResult, unavailable);
-            assert.deepEqual(port.removals, [storageKey]);
+            assert.deepEqual(
+                port.removals,
+                failure.removeMissing ? [] : [storageKey],
+            );
             assert.deepEqual(port.reads, []);
             assert.deepEqual(port.writes, []);
             assert.equal(port.value, "stored history");
@@ -545,6 +552,8 @@ describe("AssessmentHistory", () => {
                 port.value,
                 '[{"score":12,"timestamp":1788710400000}]',
             );
+            assert.deepEqual(history.clearResults(), { ok: true });
+            assert.equal(port.value, null);
         } finally {
             for (const [name, descriptor] of originalDescriptors) {
                 if (descriptor) {

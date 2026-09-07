@@ -11,6 +11,7 @@ if (historyUnavailableNotice) {
     );
     const historyChart = document.querySelector("[data-history-chart]");
     const historyResultsList = document.querySelector("[data-history-results]");
+    const clearHistoryButton = document.querySelector("[data-clear-history]");
     let historyResults = null;
 
     try {
@@ -104,6 +105,67 @@ if (historyUnavailableNotice) {
                 );
                 historyResultsList.append(row);
             }
+        }
+    }
+    if (clearHistoryButton) {
+        clearHistoryButton.hidden = !hasResults;
+
+        if (hasResults) {
+            let clearAttempted = false;
+            const removeGeneratedHistory = () => {
+                historyResultsList?.replaceChildren();
+                historyChart
+                    ?.querySelectorAll(
+                        "[data-history-score-line], [data-history-score-point]",
+                    )
+                    .forEach((element) => element.remove());
+            };
+            const showClearedState = (clearSucceeded) => {
+                removeGeneratedHistory();
+                historyUnavailableNotice.hidden = clearSucceeded;
+                historyEmptyState.hidden = !clearSucceeded;
+                historyChartContainer.hidden = true;
+                historyResultsList.hidden = true;
+                clearHistoryButton.hidden = true;
+            };
+            const isExactClearSuccess = (clearResult) => {
+                try {
+                    if (
+                        clearResult !== null &&
+                        typeof clearResult === "object" &&
+                        !Array.isArray(clearResult)
+                    ) {
+                        const keys = Reflect.ownKeys(clearResult);
+                        return (
+                            keys.length === 1 &&
+                            keys[0] === "ok" &&
+                            Object.prototype.propertyIsEnumerable.call(
+                                clearResult,
+                                "ok",
+                            ) &&
+                            clearResult.ok === true
+                        );
+                    }
+                    return false;
+                } catch {
+                    return false;
+                }
+            };
+
+            clearHistoryButton.addEventListener("click", () => {
+                if (clearAttempted) {
+                    return;
+                }
+                clearAttempted = true;
+
+                let clearResult;
+                try {
+                    clearResult = window.AssessmentHistory.clearResults();
+                } catch {
+                    clearResult = null;
+                }
+                showClearedState(isExactClearSuccess(clearResult));
+            });
         }
     }
 }

@@ -318,6 +318,25 @@ const pointerClickElement = async (selector) => {
     });
 };
 
+const pressEnter = async () => {
+    await client.send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "Enter",
+        code: "Enter",
+        text: "\r",
+        unmodifiedText: "\r",
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+    });
+    await client.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Enter",
+        code: "Enter",
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+    });
+};
+
 const snapshot = () =>
     evaluate(`(() => {
         const isVisible = (element) => Boolean(
@@ -1044,9 +1063,12 @@ try {
         "reload lost unrelated browser storage after clear",
     );
 
-    await evaluate(
-        `window.__issue16OriginalBoundary.saveResult(${JSON.stringify(singleResult)})`,
-    );
+    await evaluate(`(() => {
+        const results = ${JSON.stringify(seededResults)};
+        return results.map((result) =>
+            window.__issue16OriginalBoundary.saveResult(result)
+        );
+    })()`);
     const clearFailureModes = [
         "clear-storage-unavailable",
         "clear-arbitrary-non-success",
@@ -1074,14 +1096,7 @@ try {
             await evaluate(
                 'document.querySelector("[data-clear-history]").focus()',
             );
-            await client.send("Input.dispatchKeyEvent", {
-                type: "keyDown",
-                key: "Enter",
-            });
-            await client.send("Input.dispatchKeyEvent", {
-                type: "keyUp",
-                key: "Enter",
-            });
+            await pressEnter();
         } else {
             await pointerClickElement("[data-clear-history]");
         }

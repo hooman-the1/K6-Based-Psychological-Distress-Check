@@ -25,8 +25,12 @@ node --test .\assessments\result_content_tests.js
 These tests also run through the Django `assessments` test suite.
 
 The browser-side assessment-history contract uses Node.js's built-in test runner
-with an application-owned fake storage port. It does not mock browser Storage
-types and performs no network requests. Run it directly with:
+with an application-owned fake storage port. The frozen boundary exposes
+`getResults`, `saveResult`, and `clearResults` in that order. `clearResults()`
+removes only `k6-based-distress-check.history.v1`, verifies the key is absent,
+and returns exactly `{ ok: true }`; removal or verification failure returns
+exactly `{ ok: false, reason: "storage-unavailable" }`. The tests do not mock
+browser Storage types and perform no network requests. Run them directly with:
 
 ```powershell
 node --test .\assessments\assessment_history_tests.js
@@ -48,17 +52,20 @@ Run that focused browser test with:
 
 The same browser-test class includes a focused assessment-history scenario that
 uses real same-origin `localStorage`, reloads the page to prove persistence, and
-checks that history operations cause no post-load network request. Run only that
-scenario with:
+checks that verified clearing removes only the exact history key while preserving
+an unrelated key and causing no post-load network request. Run only that scenario
+with:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_assessment_history_uses_real_same_origin_local_storage -v 2
 ```
 
 The History availability and presentation scenario uses real same-origin
-`localStorage` for empty and populated states, injects read failures only at the
-application-owned history boundary, and fixes the browser timezone through CDP
-before checking local date/time output. Run it with:
+`localStorage` for empty, populated, and cleared states; injects read and clear
+failures only at the application-owned history boundary; and fixes the browser
+timezone through CDP before checking local date/time output. It also verifies the
+immediate successful empty-state transition and the failed-clear unavailable-state
+transition. Run it with:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_history_availability_executes_in_a_real_browser -v 2
