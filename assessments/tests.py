@@ -470,11 +470,26 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
 
         self.assertEqual(result, "history availability browser scenario passed")
 
+    @skipUnless(edge_path.is_file() and node_path, "requires Edge and Node.js")
+    def test_shared_visual_foundation_executes_in_a_real_browser(self):
+        screenshot_directory = (
+            Path(tempfile.gettempdir()) / "k6-issue20-visual-foundation"
+        )
+        result = self.run_questionnaire_browser_scenario(
+            script_name="shared_visual_foundation_browser_scenario.js",
+            success_message="shared visual foundation browser scenario passed",
+            additional_urls=(f"{self.live_server_url}{reverse('history')}",),
+            additional_arguments=(str(screenshot_directory),),
+        )
+
+        self.assertEqual(result, "shared visual foundation browser scenario passed")
+
     def run_questionnaire_browser_scenario(
         self,
         script_name="questionnaire_browser_scenario.js",
         success_message="questionnaire browser scenario passed",
         additional_urls=(),
+        additional_arguments=(),
     ):
         debugging_port = self.get_available_port()
         test_url = f"{self.live_server_url}{reverse('test')}"
@@ -513,6 +528,7 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
                         test_url,
                         home_url,
                         *additional_urls,
+                        *additional_arguments,
                     ],
                     capture_output=True,
                     check=False,
