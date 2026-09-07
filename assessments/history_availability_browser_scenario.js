@@ -1,5 +1,7 @@
 const [websocketUrl, testUrl, homeUrl, historyUrl] = process.argv.slice(2);
 const unavailableNotice = "Saved history is unavailable in this browser.";
+const storageKey = "k6-based-distress-check.history.v1";
+const unrelatedStorageKey = "unrelated.application.preference";
 const olderTimestamp = Date.parse("2026-09-06T18:00:00Z");
 const boundaryCrossingTimestamp = Date.parse("2026-09-07T00:30:00Z");
 const newestTimestamp = Date.parse("2026-09-07T08:05:00Z");
@@ -46,6 +48,7 @@ class DevToolsClient {
         this.pendingMessages = new Map();
         this.networkRequests = [];
         this.exceptions = [];
+        this.dialogs = [];
         websocket.addEventListener("message", (event) => {
             const message = JSON.parse(event.data.toString());
             if (message.method === "Network.requestWillBeSent") {
@@ -54,6 +57,13 @@ class DevToolsClient {
             }
             if (message.method === "Runtime.exceptionThrown") {
                 this.exceptions.push(message.params.exceptionDetails);
+                return;
+            }
+            if (message.method === "Page.javascriptDialogOpening") {
+                this.dialogs.push(message.params);
+                this.send("Page.handleJavaScriptDialog", { accept: false }).catch(
+                    () => {},
+                );
                 return;
             }
             const pendingMessage = this.pendingMessages.get(message.id);
@@ -147,6 +157,7 @@ const installBoundaryMode = async (mode) => {
         let exposedBoundary;
         window.__issue16GetResultsCalls = 0;
         window.__issue16SaveResultCalls = 0;
+        window.__issue19ClearResultsCalls = 0;
         window.__issue16MarkupReadyAtRead = false;
         window.__issue17ReturnedResults = null;
         window.__issue17ReturnedResultsBefore = null;
@@ -192,6 +203,30 @@ const installBoundaryMode = async (mode) => {
                     saveResult(result) {
                         window.__issue16SaveResultCalls += 1;
                         return boundary.saveResult(result);
+                    },
+                    clearResults() {
+                        window.__issue19ClearResultsCalls += 1;
+                        if (mode === "clear-reentrant-success") {
+                            const clearResult = boundary.clearResults();
+                            document.querySelector("[data-clear-history]")?.click();
+                            return clearResult;
+                        }
+                        if (mode === "clear-storage-unavailable") {
+                            return { ok: false, reason: "storage-unavailable" };
+                        }
+                        if (mode === "clear-arbitrary-non-success") {
+                            return { ok: false, reason: "unexpected-failure" };
+                        }
+                        if (mode === "clear-invalid-success") {
+                            return { ok: true, extra: true };
+                        }
+                        if (mode === "clear-undefined") {
+                            return undefined;
+                        }
+                        if (mode === "clear-throw") {
+                            throw new Error("injected application clear failure");
+                        }
+                        return boundary.clearResults();
                     },
                 });
             },
@@ -315,6 +350,10 @@ const snapshot = () =>
             "[data-history-chart-explanation]"
         );
         const resultsList = document.querySelector("[data-history-results]");
+        const clearControls = Array.from(
+            document.querySelectorAll("[data-clear-history]")
+        );
+        const clearControl = clearControls[0];
         const chartRect = chart?.getBoundingClientRect();
         const shellRect = document.querySelector(".page-shell")?.getBoundingClientRect();
         const chartElements = chartContainer
@@ -335,12 +374,16 @@ const snapshot = () =>
             visibleEmptyMessageCount: emptyMessages.filter(isVisible).length,
             visibleTakeTestHrefs: takeTestLinks.filter(isVisible).map((link) => link.href),
             visibleNoticeTexts: notices.filter(isVisible).map((notice) => notice.textContent.trim()),
+            visibleParagraphTexts: Array.from(document.querySelectorAll("p"))
+                .filter(isVisible)
+                .map((paragraph) => paragraph.textContent.trim()),
             visibleResultListCount: Array.from(
                 document.querySelectorAll("[data-history-results]")
             ).filter(isVisible).length,
             visibleResultRowCount: Array.from(
                 document.querySelectorAll("[data-history-result]")
             ).filter(isVisible).length,
+            resultRowCount: resultRows.length,
             visibleResultRows: resultRows.filter(isVisible).map((row) => ({
                 values: Array.from(row.children).filter(isVisible).map(
                     (value) => value.textContent.trim()
@@ -445,19 +488,37 @@ const snapshot = () =>
                 documentWidth: document.documentElement.scrollWidth,
             },
             visibleClearHistoryCount: Array.from(
-                document.querySelectorAll("button, a")
-            ).filter(
-                (control) => isVisible(control) &&
-                    control.textContent.trim() === "Clear All History"
-            ).length,
+                clearControls
+            ).filter(isVisible).length,
+            clearHistoryCount: clearControls.length,
+            clearHistoryText: clearControl?.textContent.trim() ?? null,
+            clearHistoryTag: clearControl?.tagName.toLowerCase() ?? null,
+            clearHistoryType: clearControl?.getAttribute("type") ?? null,
+            clearHistoryHref: clearControl?.getAttribute("href") ?? null,
+            clearHistoryInsideForm: Boolean(clearControl?.closest("form")),
+            clearHistoryAppearsAfterResults:
+                Boolean(clearControl && resultsList) &&
+                Boolean(
+                    resultsList.compareDocumentPosition(clearControl) &
+                    Node.DOCUMENT_POSITION_FOLLOWING
+                ),
             dialogCount: document.querySelectorAll("dialog, [role='dialog'], [role='alertdialog']").length,
             getResultsCalls: window.__issue16GetResultsCalls,
             saveResultCalls: window.__issue16SaveResultCalls,
+            clearResultsCalls: window.__issue19ClearResultsCalls,
             markupReadyAtRead: window.__issue16MarkupReadyAtRead,
+            rawHistory: localStorage.getItem(${JSON.stringify(storageKey)}),
+            unrelatedStorageValue: localStorage.getItem(
+                ${JSON.stringify(unrelatedStorageKey)}
+            ),
         };
     })()`);
 
-const assertSettledWithoutSideEffects = async (context, readCount) => {
+const assertSettledWithoutSideEffects = async (
+    context,
+    readCount,
+    clearCount = 0,
+) => {
     const requestCount = client.networkRequests.length;
     await delay(100);
     assert(
@@ -471,6 +532,10 @@ const assertSettledWithoutSideEffects = async (context, readCount) => {
     assert(
         (await evaluate("window.__issue16SaveResultCalls")) === 0,
         `${context} performed a delayed write probe`,
+    );
+    assert(
+        (await evaluate("window.__issue19ClearResultsCalls")) === clearCount,
+        `${context} retried or unexpectedly attempted a clear`,
     );
 };
 
@@ -486,6 +551,7 @@ const assertAvailableHome = (state, context) => {
     assert(state.getResultsCalls === 1, `${context}: availability was not read exactly once`);
     assert(state.markupReadyAtRead, `${context}: availability was read before markup existed`);
     assert(state.saveResultCalls === 0, `${context}: availability performed a write probe`);
+    assert(state.clearResultsCalls === 0, `${context}: availability attempted a clear`);
 };
 
 const assertUnavailableHome = (state, mode) => {
@@ -508,9 +574,10 @@ const assertUnavailableHome = (state, mode) => {
         `${mode}: Home availability was read before markup existed`,
     );
     assert(state.saveResultCalls === 0, `${mode}: Home performed a write probe`);
+    assert(state.clearResultsCalls === 0, `${mode}: Home attempted a clear`);
 };
 
-const assertUnavailableHistory = (state, mode) => {
+const assertUnavailableHistory = (state, mode, clearCount = 0) => {
     assert(state.pathname === "/history", `${mode}: History pathname changed`);
     assert(state.search === "" && state.hash === "", `${mode}: History URL has extra data`);
     assert(state.heading === "History", `${mode}: History heading changed`);
@@ -518,12 +585,21 @@ const assertUnavailableHistory = (state, mode) => {
     assert(state.visibleTakeTestHrefs.length === 0, `${mode}: History shows Take Test`);
     assert(state.visibleResultListCount === 0, `${mode}: History shows a result list`);
     assert(state.visibleResultRowCount === 0, `${mode}: History shows a result row`);
+    assert(state.resultRowCount === 0, `${mode}: History retains a result row`);
     assert(!state.chart.containerVisible, `${mode}: History shows the chart figure`);
     assert(!state.chart.headingVisible, `${mode}: History shows the chart heading`);
     assert(!state.chart.explanationVisible, `${mode}: History shows the chart explanation`);
+    assert(state.chart.scoreLineCount === 0, `${mode}: History retains a score line`);
+    assert(state.chart.points.length === 0, `${mode}: History retains score points`);
+    assert(state.visibleClearHistoryCount === 0, `${mode}: History shows Clear All History`);
     assert(
         JSON.stringify(state.visibleNoticeTexts) === JSON.stringify([unavailableNotice]),
         `${mode}: History notice is missing, duplicated, or wrong`,
+    );
+    assert(
+        JSON.stringify(state.visibleParagraphTexts) ===
+            JSON.stringify([unavailableNotice]),
+        `${mode}: History shows extra state copy`,
     );
     assert(state.dialogCount === 0, `${mode}: History uses a blocking dialog`);
     assert(
@@ -535,9 +611,13 @@ const assertUnavailableHistory = (state, mode) => {
         `${mode}: History availability was read before markup existed`,
     );
     assert(state.saveResultCalls === 0, `${mode}: History performed a write probe`);
+    assert(
+        state.clearResultsCalls === clearCount,
+        `${mode}: History clear call count is wrong`,
+    );
 };
 
-const assertEmptyHistory = (state) => {
+const assertEmptyHistory = (state, clearCount = 0) => {
     assert(state.pathname === "/history", "empty History pathname changed");
     assert(state.search === "" && state.hash === "", "empty History URL has extra data");
     assert(state.heading === "History", "empty History heading changed");
@@ -547,15 +627,27 @@ const assertEmptyHistory = (state) => {
         "empty History Take Test action is missing, duplicated, or wrong",
     );
     assert(state.visibleNoticeTexts.length === 0, "empty History shows unavailable notice");
+    assert(
+        JSON.stringify(state.visibleParagraphTexts) ===
+            JSON.stringify(["No saved results yet."]),
+        "empty History shows extra state copy",
+    );
     assert(state.visibleResultListCount === 0, "empty History shows a result list");
     assert(state.visibleResultRowCount === 0, "empty History shows a result row");
+    assert(state.resultRowCount === 0, "empty History retains a result row");
     assert(state.visibleChartCount === 0, "empty History shows a chart");
     assert(!state.chart.containerVisible, "empty History shows the chart figure");
     assert(!state.chart.headingVisible, "empty History shows the chart heading");
     assert(!state.chart.explanationVisible, "empty History shows the chart explanation");
+    assert(state.chart.scoreLineCount === 0, "empty History retains a score line");
+    assert(state.chart.points.length === 0, "empty History retains score points");
     assert(state.visibleClearHistoryCount === 0, "empty History shows Clear All History");
     assert(state.getResultsCalls === 1, "empty History was not read exactly once");
     assert(state.saveResultCalls === 0, "empty History performed a write probe");
+    assert(
+        state.clearResultsCalls === clearCount,
+        "empty History clear call count is wrong",
+    );
 };
 
 const approximatelyEqual = (actual, expected) =>
@@ -718,9 +810,25 @@ const assertPopulatedHistory = async (state) => {
             );
         }
     }
-    assert(state.visibleClearHistoryCount === 0, "populated History shows Clear All History");
+    assert(
+        state.visibleClearHistoryCount === 1 && state.clearHistoryCount === 1,
+        "populated History does not show exactly one Clear All History action",
+    );
+    assert(
+        state.clearHistoryTag === "button" &&
+            state.clearHistoryType === "button" &&
+            state.clearHistoryText === "Clear All History",
+        "populated History Clear All History action is not the required button",
+    );
+    assert(state.clearHistoryHref === null, "Clear All History is an anchor");
+    assert(!state.clearHistoryInsideForm, "Clear All History is a form control");
+    assert(
+        state.clearHistoryAppearsAfterResults,
+        "Clear All History is not after the chart and results list",
+    );
     assert(state.getResultsCalls === 1, "populated History was not read exactly once");
     assert(state.saveResultCalls === 0, "populated History performed a write probe");
+    assert(state.clearResultsCalls === 0, "populated History cleared before activation");
     assert(
         await evaluate(
             "JSON.stringify(window.__issue17ReturnedResults) === " +
@@ -759,6 +867,7 @@ try {
     state = await snapshot();
     assert(state.visibleNoticeTexts.length === 0, "Test shows a history notice");
     assert(state.getResultsCalls === 0, "Test checked history availability");
+    assert(state.clearResultsCalls === 0, "Test attempted to clear history");
     assert(
         Boolean(await evaluate('document.querySelector("[data-questionnaire]")')),
         "Start Test did not reach the usable questionnaire",
@@ -871,6 +980,151 @@ try {
     assert((await evaluate("location.pathname")) === "/history", "row interaction changed URL");
     await assertSettledWithoutSideEffects("populated History", 1);
 
+    await installBoundaryMode("clear-reentrant-success");
+    await navigate(
+        historyUrl,
+        "/history",
+        "History",
+        "clear-reentrant-success",
+    );
+    state = await snapshot();
+    await assertPopulatedHistory(state);
+    assertChart(state, expectedOldestFirstScores, "clearable populated History");
+    await evaluate(`localStorage.setItem(
+        ${JSON.stringify(unrelatedStorageKey)},
+        "preserve this value",
+    )`);
+    const populatedRawHistory = state.rawHistory;
+    assert(populatedRawHistory !== null, "populated History has no persisted history");
+    const urlBeforeClear = state.url;
+    const historyStateBeforeClear = JSON.stringify(state.historyState);
+    const dialogsBeforeClear = client.dialogs.length;
+    const requestsBeforeClear = client.networkRequests.length;
+    await evaluate(
+        "window.__issue19RetainedClearButton = " +
+            'document.querySelector("[data-clear-history]")',
+    );
+    await pointerClickElement("[data-clear-history]");
+    state = await snapshot();
+    assertEmptyHistory(state, 1);
+    assert(state.url === urlBeforeClear, "successful clear changed the History URL");
+    assert(
+        JSON.stringify(state.historyState) === historyStateBeforeClear,
+        "successful clear changed browser history state",
+    );
+    assert(state.resultRowCount === 0, "successful clear retained generated result rows");
+    assert(state.chart.scoreLineCount === 0, "successful clear retained the score line");
+    assert(state.chart.points.length === 0, "successful clear retained score points");
+    assert(state.rawHistory === null, "successful clear left the history key present");
+    assert(
+        state.unrelatedStorageValue === "preserve this value",
+        "successful clear changed unrelated browser storage",
+    );
+    assert(client.dialogs.length === dialogsBeforeClear, "successful clear opened a dialog");
+    assert(
+        client.networkRequests.length === requestsBeforeClear,
+        "successful clear caused a post-load network request",
+    );
+    await evaluate(`(() => {
+        const button = window.__issue19RetainedClearButton;
+        button.click();
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        window.dispatchEvent(new Event("pageshow"));
+        document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await assertSettledWithoutSideEffects("successful clear", 1, 1);
+
+    await client.send("Page.reload", { ignoreCache: true });
+    await waitForInitializedPage("/history", "History", "available");
+    state = await snapshot();
+    assertEmptyHistory(state);
+    assert(state.rawHistory === null, "reload restored successfully cleared history");
+    assert(
+        state.unrelatedStorageValue === "preserve this value",
+        "reload lost unrelated browser storage after clear",
+    );
+
+    await evaluate(
+        `window.__issue16OriginalBoundary.saveResult(${JSON.stringify(singleResult)})`,
+    );
+    const clearFailureModes = [
+        "clear-storage-unavailable",
+        "clear-arbitrary-non-success",
+        "clear-invalid-success",
+        "clear-undefined",
+        "clear-throw",
+    ];
+    for (let index = 0; index < clearFailureModes.length; index += 1) {
+        const mode = clearFailureModes[index];
+        await installBoundaryMode(mode);
+        await navigate(historyUrl, "/history", "History", mode);
+        state = await snapshot();
+        await assertPopulatedHistory(state);
+        const rawHistoryBeforeFailedClear = state.rawHistory;
+        const failedClearUrl = state.url;
+        const failedClearHistoryState = JSON.stringify(state.historyState);
+        const exceptionsBeforeFailedClear = client.exceptions.length;
+        const dialogsBeforeFailedClear = client.dialogs.length;
+        const requestsBeforeFailedClear = client.networkRequests.length;
+        await evaluate(
+            "window.__issue19RetainedClearButton = " +
+                'document.querySelector("[data-clear-history]")',
+        );
+        if (index === 0) {
+            await evaluate(
+                'document.querySelector("[data-clear-history]").focus()',
+            );
+            await client.send("Input.dispatchKeyEvent", {
+                type: "keyDown",
+                key: "Enter",
+            });
+            await client.send("Input.dispatchKeyEvent", {
+                type: "keyUp",
+                key: "Enter",
+            });
+        } else {
+            await pointerClickElement("[data-clear-history]");
+        }
+        state = await snapshot();
+        assertUnavailableHistory(state, mode, 1);
+        assert(state.url === failedClearUrl, `${mode}: failed clear changed the URL`);
+        assert(
+            JSON.stringify(state.historyState) === failedClearHistoryState,
+            `${mode}: failed clear changed browser history state`,
+        );
+        assert(state.resultRowCount === 0, `${mode}: failed clear retained result rows`);
+        assert(state.chart.scoreLineCount === 0, `${mode}: failed clear retained score line`);
+        assert(state.chart.points.length === 0, `${mode}: failed clear retained score points`);
+        assert(
+            state.rawHistory === rawHistoryBeforeFailedClear,
+            `${mode}: failed clear changed persisted history`,
+        );
+        assert(
+            state.unrelatedStorageValue === "preserve this value",
+            `${mode}: failed clear changed unrelated browser storage`,
+        );
+        assert(
+            client.exceptions.length === exceptionsBeforeFailedClear,
+            `${mode}: failed clear exposed an uncaught exception`,
+        );
+        assert(
+            client.dialogs.length === dialogsBeforeFailedClear,
+            `${mode}: failed clear opened a dialog`,
+        );
+        assert(
+            client.networkRequests.length === requestsBeforeFailedClear,
+            `${mode}: failed clear caused a post-load network request`,
+        );
+        await evaluate(`(() => {
+            const button = window.__issue19RetainedClearButton;
+            button.click();
+            button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            window.dispatchEvent(new Event("pageshow"));
+            document.dispatchEvent(new Event("visibilitychange"));
+        })()`);
+        await assertSettledWithoutSideEffects(mode, 1, 1);
+    }
+
     const unavailableModes = [
         "invalid-stored-data",
         "arbitrary-non-success",
@@ -905,6 +1159,23 @@ try {
             `${mode}: History exposed an uncaught exception`,
         );
     }
+
+    const malformedHistory = "malformed history must remain unchanged";
+    await installBoundaryMode("available");
+    await evaluate(
+        `localStorage.setItem(
+            ${JSON.stringify(storageKey)},
+            ${JSON.stringify(malformedHistory)},
+        )`,
+    );
+    await navigate(historyUrl, "/history", "History", "malformed-real-storage");
+    state = await snapshot();
+    assertUnavailableHistory(state, "malformed-real-storage");
+    assert(
+        state.rawHistory === malformedHistory,
+        "malformed History initialization changed the stored value",
+    );
+    await assertSettledWithoutSideEffects("malformed real-storage History", 1);
 
     assert(
         client.networkRequests.every(
