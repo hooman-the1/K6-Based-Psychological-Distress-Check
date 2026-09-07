@@ -174,6 +174,11 @@ const snapshot = () =>
             nextDisabled: nextButton?.disabled ?? null,
             nextMatchesDisabled: nextButton?.matches(":disabled") ?? null,
             nextOpacity: nextButton ? getComputedStyle(nextButton).opacity : null,
+            nextBackgroundColor: nextButton
+                ? getComputedStyle(nextButton).backgroundColor
+                : null,
+            nextColor: nextButton ? getComputedStyle(nextButton).color : null,
+            nextCursor: nextButton ? getComputedStyle(nextButton).cursor : null,
             helperButtonCount: step?.querySelectorAll("[data-question-helper]").length ?? 0,
             helperCopyCount: step?.querySelectorAll("[data-question-helper-copy]").length ?? 0,
             helperButtonType: helperButton?.type ?? null,
@@ -496,8 +501,11 @@ const assertNewQuestionIsGated = (state, number) => {
         `step ${number}: Next does not match :disabled`,
     );
     assert(
-        Number(state.nextOpacity) < 1,
-        `step ${number}: disabled Next is not visually distinct`,
+        state.nextOpacity === "1" &&
+            state.nextBackgroundColor === "rgb(228, 231, 235)" &&
+            state.nextColor === "rgb(82, 96, 109)" &&
+            state.nextCursor === "not-allowed",
+        `step ${number}: disabled Next does not use the shared disabled state`,
     );
 };
 
@@ -555,9 +563,9 @@ try {
     assert(
         state.cardStyles.every(
             (bounds) =>
-                bounds.left === 16 && bounds.right === 304 && bounds.width === 288,
+                bounds.left === 37 && bounds.right === 283 && bounds.width === 246,
         ),
-        "response cards must fill the 320px viewport content width",
+        "response cards must fill the 320px page-shell content width",
     );
     const questionnaireHistoryLength = state.historyLength;
     const initialQuestionState = state;
