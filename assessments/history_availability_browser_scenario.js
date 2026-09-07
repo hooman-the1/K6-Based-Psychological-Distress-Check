@@ -1,5 +1,26 @@
 const [websocketUrl, testUrl, homeUrl, historyUrl] = process.argv.slice(2);
 const unavailableNotice = "Saved history is unavailable in this browser.";
+const olderTimestamp = Date.parse("2026-09-06T18:00:00Z");
+const boundaryCrossingTimestamp = Date.parse("2026-09-07T00:30:00Z");
+const newestTimestamp = Date.parse("2026-09-07T08:05:00Z");
+const seededResults = [
+    { score: 0, timestamp: olderTimestamp },
+    { score: 12, timestamp: boundaryCrossingTimestamp },
+    { score: 13, timestamp: boundaryCrossingTimestamp },
+    { score: 14, timestamp: boundaryCrossingTimestamp },
+    { score: 13, timestamp: boundaryCrossingTimestamp },
+    { score: 13, timestamp: boundaryCrossingTimestamp },
+    { score: 24, timestamp: newestTimestamp },
+];
+const expectedNewestFirstRows = [
+    ["Sep 7, 2026", "1:05 AM", "24 / 24", "At or above the cutoff"],
+    ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
+    ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
+    ["Sep 6, 2026", "5:30 PM", "14 / 24", "At or above the cutoff"],
+    ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
+    ["Sep 6, 2026", "5:30 PM", "12 / 24", "Below the cutoff"],
+    ["Sep 6, 2026", "11:00 AM", "0 / 24", "Below the cutoff"],
+];
 
 const assert = (condition, message) => {
     if (!condition) {
@@ -119,6 +140,8 @@ const installBoundaryMode = async (mode) => {
         window.__issue16GetResultsCalls = 0;
         window.__issue16SaveResultCalls = 0;
         window.__issue16MarkupReadyAtRead = false;
+        window.__issue17ReturnedResults = null;
+        window.__issue17ReturnedResultsBefore = null;
         Object.defineProperty(window, "AssessmentHistory", {
             configurable: true,
             get() {
@@ -149,7 +172,14 @@ const installBoundaryMode = async (mode) => {
                         if (mode === "throw") {
                             throw new Error("injected application history failure");
                         }
-                        return boundary.getResults();
+                        const readResult = boundary.getResults();
+                        if (readResult?.ok === true && Array.isArray(readResult.results)) {
+                            window.__issue17ReturnedResults = readResult.results;
+                            window.__issue17ReturnedResultsBefore = JSON.stringify(
+                                readResult.results,
+                            );
+                        }
+                        return readResult;
                     },
                     saveResult(result) {
                         window.__issue16SaveResultCalls += 1;
@@ -220,11 +250,37 @@ const pointerClickLink = async (linkText) => {
     });
 };
 
+const pointerClickElement = async (selector) => {
+    const bounds = await evaluate(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        if (!element || element.hidden) return null;
+        element.scrollIntoView({ block: "center" });
+        const bounds = element.getBoundingClientRect();
+        return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    })()`);
+    assert(bounds, `missing visible element for pointer click: ${selector}`);
+    await client.send("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x: bounds.x,
+        y: bounds.y,
+        button: "left",
+        clickCount: 1,
+    });
+    await client.send("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x: bounds.x,
+        y: bounds.y,
+        button: "left",
+        clickCount: 1,
+    });
+};
+
 const snapshot = () =>
     evaluate(`(() => {
         const isVisible = (element) => Boolean(
             element &&
             !element.hidden &&
+            element.getClientRects().length > 0 &&
             getComputedStyle(element).display !== "none" &&
             getComputedStyle(element).visibility !== "hidden"
         );
@@ -239,6 +295,7 @@ const snapshot = () =>
         const notices = Array.from(document.querySelectorAll("p")).filter(
             (notice) => notice.textContent.trim() === ${JSON.stringify(unavailableNotice)}
         );
+        const resultRows = Array.from(document.querySelectorAll("[data-history-result]"));
         return {
             pathname: location.pathname,
             search: location.search,
@@ -258,6 +315,18 @@ const snapshot = () =>
             visibleResultRowCount: Array.from(
                 document.querySelectorAll("[data-history-result]")
             ).filter(isVisible).length,
+            visibleResultRows: resultRows.filter(isVisible).map((row) => ({
+                values: Array.from(row.children).filter(isVisible).map(
+                    (value) => value.textContent.trim()
+                ),
+                interactiveCount: row.querySelectorAll(
+                    "a, button, form, input, select, textarea"
+                ).length,
+                tabIndex: row.tabIndex,
+                role: row.getAttribute("role"),
+                hasClickHandler: row.onclick !== null,
+                html: row.outerHTML,
+            })),
             visibleChartCount: Array.from(
                 document.querySelectorAll("canvas, svg, [data-history-chart]")
             ).filter(isVisible).length,
@@ -331,6 +400,10 @@ const assertUnavailableHistory = (state, mode) => {
     assert(state.pathname === "/history", `${mode}: History pathname changed`);
     assert(state.search === "" && state.hash === "", `${mode}: History URL has extra data`);
     assert(state.heading === "History", `${mode}: History heading changed`);
+    assert(state.visibleEmptyMessageCount === 0, `${mode}: History shows the empty state`);
+    assert(state.visibleTakeTestHrefs.length === 0, `${mode}: History shows Take Test`);
+    assert(state.visibleResultListCount === 0, `${mode}: History shows a result list`);
+    assert(state.visibleResultRowCount === 0, `${mode}: History shows a result row`);
     assert(
         JSON.stringify(state.visibleNoticeTexts) === JSON.stringify([unavailableNotice]),
         `${mode}: History notice is missing, duplicated, or wrong`,
@@ -365,6 +438,49 @@ const assertEmptyHistory = (state) => {
     assert(state.saveResultCalls === 0, "empty History performed a write probe");
 };
 
+const assertPopulatedHistory = async (state) => {
+    assert(state.pathname === "/history", "populated History pathname changed");
+    assert(state.search === "" && state.hash === "", "populated History URL has extra data");
+    assert(state.heading === "History", "populated History heading changed");
+    assert(state.visibleEmptyMessageCount === 0, "populated History shows the empty message");
+    assert(state.visibleTakeTestHrefs.length === 0, "populated History shows Take Test");
+    assert(state.visibleNoticeTexts.length === 0, "populated History shows unavailable notice");
+    assert(state.visibleResultListCount === 1, "populated History does not show exactly one list");
+    assert(
+        state.visibleResultRowCount === seededResults.length,
+        "populated History row count does not match the boundary",
+    );
+    assert(
+        JSON.stringify(state.visibleResultRows.map((row) => row.values)) ===
+            JSON.stringify(expectedNewestFirstRows),
+        "populated History values, formatting, cutoff labels, or order are wrong",
+    );
+    for (const row of state.visibleResultRows) {
+        assert(row.values.length === 4, "a History row exposes more than four values");
+        assert(row.interactiveCount === 0, "a History row contains an interactive control");
+        assert(row.tabIndex === -1, "a History row is keyboard-focusable");
+        assert(row.role === null, "a History row declares an interactive role");
+        assert(!row.hasClickHandler, "a History row has a click handler");
+        for (const result of seededResults) {
+            assert(
+                !row.html.includes(String(result.timestamp)),
+                "a History row exposes a raw timestamp",
+            );
+        }
+    }
+    assert(state.visibleChartCount === 0, "populated History shows a chart");
+    assert(state.visibleClearHistoryCount === 0, "populated History shows Clear All History");
+    assert(state.getResultsCalls === 1, "populated History was not read exactly once");
+    assert(state.saveResultCalls === 0, "populated History performed a write probe");
+    assert(
+        await evaluate(
+            "JSON.stringify(window.__issue17ReturnedResults) === " +
+                "window.__issue17ReturnedResultsBefore",
+        ),
+        "History presentation mutated the boundary-owned result order or records",
+    );
+};
+
 try {
     await client.send("Runtime.enable");
     await client.send("Page.enable");
@@ -374,6 +490,9 @@ try {
         height: 900,
         deviceScaleFactor: 1,
         mobile: false,
+    });
+    await client.send("Emulation.setTimezoneOverride", {
+        timezoneId: "America/Los_Angeles",
     });
 
     await installBoundaryMode("storage-unavailable");
@@ -423,9 +542,12 @@ try {
     assert(state.getResultsCalls === 0, "empty-state Take Test caused a history read");
     assert(state.saveResultCalls === 0, "empty-state Take Test created a history record");
 
-    await evaluate(
-        "window.__issue16OriginalBoundary.saveResult({ score: 12, timestamp: 1000 })",
-    );
+    await evaluate(`(() => {
+        const seededResults = ${JSON.stringify(seededResults)};
+        return seededResults.map((result) =>
+            window.__issue16OriginalBoundary.saveResult(result)
+        );
+    })()`);
     await client.send("Page.navigate", { url: homeUrl });
     await waitForInitializedPage("/", "K6-Based Psychological Distress Check", "available");
     state = await snapshot();
@@ -434,13 +556,12 @@ try {
     await pointerClickLink("View History");
     await waitForInitializedPage("/history", "History", "available");
     state = await snapshot();
-    assert(state.pathname === "/history", "available History pathname changed");
-    assert(state.heading === "History", "available History heading changed");
-    assert(state.visibleNoticeTexts.length === 0, "available History shows a notice");
-    assert(state.getResultsCalls === 1, "available History was not read exactly once");
-    assert(state.markupReadyAtRead, "available History was read before markup existed");
-    assert(state.saveResultCalls === 0, "available History performed a write probe");
-    await assertSettledWithoutSideEffects("available History", 1);
+    await assertPopulatedHistory(state);
+    await pointerClickElement("[data-history-result]");
+    await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter" });
+    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter" });
+    assert((await evaluate("location.pathname")) === "/history", "row interaction changed URL");
+    await assertSettledWithoutSideEffects("populated History", 1);
 
     const unavailableModes = [
         "invalid-stored-data",
