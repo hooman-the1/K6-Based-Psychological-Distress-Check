@@ -514,6 +514,16 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
 
         self.assertEqual(result, "History and cross-route visual scenario passed")
 
+    @skipUnless(edge_path.is_file() and node_path, "requires Edge and Node.js")
+    def test_primary_assessment_journey_executes_in_a_real_browser(self):
+        result = self.run_questionnaire_browser_scenario(
+            script_name="primary_assessment_journey_browser_scenario.js",
+            success_message="primary assessment journey browser scenario passed",
+            additional_urls=(f"{self.live_server_url}{reverse('history')}",),
+        )
+
+        self.assertEqual(result, "primary assessment journey browser scenario passed")
+
     def run_questionnaire_browser_scenario(
         self,
         script_name="questionnaire_browser_scenario.js",
