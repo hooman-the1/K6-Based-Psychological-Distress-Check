@@ -274,7 +274,7 @@ progress {
 }
 
 .response-option:has(input:checked) {
-    border-color: var(--color-muted);
+    border-color: var(--color-primary);
 }
 
 .questionnaire-controls {
