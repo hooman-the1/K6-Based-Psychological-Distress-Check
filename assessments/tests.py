@@ -100,18 +100,26 @@ class AssessmentsAppTests(SimpleTestCase):
 
 
 class ReleaseDocumentationTests(SimpleTestCase):
-    def test_readme_defines_release_setup_and_browser_boundaries(self):
+    def test_readme_is_a_complete_public_user_and_contributor_guide(self):
         readme_path = Path(__file__).resolve().parents[1] / "README.md"
         readme = readme_path.read_text(encoding="utf-8")
         normalized_readme = " ".join(readme.split())
+        normalized_casefold_readme = normalized_readme.casefold()
 
         required_sections = (
-            "## Product scope",
-            "## Routes and result lifecycle",
-            "## Prerequisites",
-            "## Install, verify, and run",
-            "## Browser data and storage failures",
-            "## Privacy and external resources",
+            "## Overview",
+            "## Important health notice",
+            "## Features",
+            "## How scoring works",
+            "## Routes and state lifecycle",
+            "## Privacy and local data",
+            "## Requirements",
+            "## Quick start",
+            "## Using the application",
+            "## Testing",
+            "## Project structure",
+            "## Contributing",
+            "## Production-use note",
         )
         for section in required_sections:
             with self.subTest(section=section):
@@ -122,63 +130,109 @@ class ReleaseDocumentationTests(SimpleTestCase):
         )
 
         required_commands = (
+            "git clone https://github.com/hooman-the1/K6-Based-Psychological-Distress-Check.git",
+            'Set-Location "K6-Based-Psychological-Distress-Check"',
             "python -m venv .venv",
             ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+            ".\\.venv\\Scripts\\python.exe manage.py migrate",
             ".\\.venv\\Scripts\\python.exe manage.py check",
+            ".\\.venv\\Scripts\\python.exe manage.py test assessments",
             ".\\.venv\\Scripts\\python.exe manage.py test",
             ".\\.venv\\Scripts\\python.exe manage.py runserver",
+            "python3 -m venv .venv",
+            ".venv/bin/python -m pip install -r requirements.txt",
+            ".venv/bin/python manage.py migrate",
+            ".venv/bin/python manage.py check",
+            ".venv/bin/python manage.py runserver",
         )
         for command in required_commands:
             with self.subTest(command=command):
                 self.assertIn(command, readme)
-        self.assertEqual(
-            sorted(readme.find(command) for command in required_commands),
-            [readme.find(command) for command in required_commands],
-        )
 
         required_contracts = (
-            "frontend-only, mobile-first portfolio demo",
+            "answer six questions about the past 30 days",
+            "0–24 score",
+            "review locally saved score History",
+            "clear that History",
             "K6-based",
             "adapted wording",
             "not the validated K6 instrument",
             "not a diagnostic tool",
             "not a replacement for professional care",
+            "one question at a time",
+            "Back and Next",
+            "in-session",
+            "four curated external resources",
+            "oldest to newest",
+            "cutoff line",
+            "newest first",
+            "Clear All History",
+            "Each answer uses the 0–4 response scale",
+            "Totals range from 0 to 24",
+            "Higher scores mean greater psychological distress",
+            "13 or above",
+            "validation of the original instrument cannot automatically be assumed",
             "`/`, `/test`, `/result`, and `/history`",
-            "`/result` is transient",
-            "a direct visit or refresh without an active in-memory result returns to Home",
-            "Python 3.12 or newer",
-            "Node.js",
-            r"`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`",
-            "required to execute, rather than skip",
-            "http://127.0.0.1:8000/",
-            "local development server, not a production deployment server",
-            "](_docs/testing-guidelines.md)",
-            "Django serves the local pages and static assets",
-            "History behavior execute in the browser",
-            "There is no product API, server-side result persistence, account, authentication, database model, or cloud synchronization",
-            "uses only the `k6-based-distress-check.history.v1` `localStorage` key",
+            "`/result` exists only for the active in-memory completion",
+            "Direct access or refresh without that state returns to Home",
+            "refreshing an unfinished questionnaire discards its answers",
+            "Django serves pages and local static assets",
+            "questionnaire interaction, scoring, active Result state, and History behavior run in the browser",
+            "no product API, account or authentication flow, server-side result persistence, cloud synchronization, analytics, or telemetry",
             "`k6-based-distress-check.history.v1`",
             "numeric `score` and integer `timestamp`",
-            "at most 20 records",
-            "when result 21 is saved, the oldest record is evicted",
-            "Individual questionnaire answers are never saved",
-            "unfinished questionnaire and the active Result are memory-only",
-            "leaving or refreshing discards them",
-            "Clearing History removes only the application History key",
-            "leaving unrelated browser storage untouched",
-            "stored History is malformed",
-            "browser storage is unavailable, denied, full, or throws while reading, saving, or clearing",
-            "still start, complete, score, and view a Result",
-            "History access and presentation become unavailable",
-            "non-blocking notice",
-            "failed save is not recreated elsewhere",
-            "does not automatically send questionnaire answers, scores, timestamps, or History",
-            "server, analytics service, or telemetry service",
-            "user-directed visit to an external first-party website",
+            "Individual answers are never saved",
+            "At most 20 records",
+            "result 21 evicts the oldest",
+            "removes only that application key",
+            "preserves unrelated browser storage",
+            "malformed, unavailable, denied, full, or throwing",
+            "read, save, or clear",
+            "still start and complete an assessment, calculate its score, and view the active Result",
+            "History becomes unavailable with a non-blocking notice",
+            "failed save is not recreated in another location",
+            "NIMH, WHO, and NHS",
+            "user-directed external navigation",
+            "do not inherit this application's local-only privacy boundary",
+            "Python 3.12 or newer",
+            "Django 6.1.1",
+            "Node.js",
+            r"`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`",
+            "execute rather than skip",
+            "full browser suite has not been validated on macOS or Linux",
+            "http://127.0.0.1:8000/",
+            "Django contrib migrations",
+            "assessment answers, scores, timestamps, and History are not persisted by Django or SQLite",
+            "current browser profile",
+            "](_docs/testing-guidelines.md)",
+            "`config/`",
+            "`assessments/templates/`",
+            "`assessments/static/assessments/`",
+            "`assessments/tests.py`",
+            "`_docs/`",
+            "](_docs/plan.md)",
+            "](_docs/design-system.md)",
+            "test-first development",
+            "Django `runserver`",
+            "`DEBUG=True`",
+            "checked-in development secret",
+            "empty `ALLOWED_HOSTS`",
+            "unsuitable for production",
+            "https://docs.djangoproject.com/en/6.1/howto/deployment/",
         )
         for contract in required_contracts:
             with self.subTest(contract=contract):
-                self.assertIn(contract, normalized_readme)
+                self.assertIn(contract.casefold(), normalized_casefold_readme)
+
+        for forbidden_framing in (
+            "course",
+            "coursework",
+            "assignment",
+            "portfolio",
+            "demo",
+        ):
+            with self.subTest(forbidden_framing=forbidden_framing):
+                self.assertNotIn(forbidden_framing, normalized_casefold_readme)
 
 
 class QuestionnaireContentTests(SimpleTestCase):
