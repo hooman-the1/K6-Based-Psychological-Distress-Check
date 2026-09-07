@@ -140,3 +140,18 @@ All History action, shell bottom spacing, document-only scrolling, and no
 horizontal or component overflow. The automated scenario additionally checks
 the same bottom reachability and focus-outline containment at 375px without
 adding a twenty-fifth screenshot.
+
+The primary assessment journey scenario uses one fresh temporary genuine Edge
+profile and real same-origin storage. It fixes the browser timezone to
+`America/New_York`, starts from Home, activates visible controls to answer all
+six questions, checks the 14-point Result and resources, and observes the one
+canonical saved record. It then follows the realistic browser-history path
+Result → Back → fresh Test → Back → Home, activates View History, checks the
+one-record chart/list with independently formatted local date and time, returns
+Back to Home, and begins a second fresh assessment without saving another
+record. It neither replaces application/browser boundaries nor visits external
+resource destinations. Run it with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_primary_assessment_journey_executes_in_a_real_browser -v 2
+```
