@@ -468,7 +468,7 @@ const assertPopulatedHistory = async (state) => {
             );
         }
     }
-    assert(state.visibleChartCount === 0, "populated History shows a chart");
+    assert(state.visibleChartCount === 1, "populated History does not show one chart");
     assert(state.visibleClearHistoryCount === 0, "populated History shows Clear All History");
     assert(state.getResultsCalls === 1, "populated History was not read exactly once");
     assert(state.saveResultCalls === 0, "populated History performed a write probe");
