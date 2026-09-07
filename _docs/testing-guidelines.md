@@ -155,3 +155,18 @@ resource destinations. Run it with:
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_primary_assessment_journey_executes_in_a_real_browser -v 2
 ```
+
+The questionnaire edge-case journey complements the unchanged detailed
+questionnaire interaction scenario and the primary straight-through journey.
+In a fresh genuine Edge profile at 320x900, it protects disabled pointer,
+`click()`, and `requestSubmit()` guards; progress and navigation; non-advancing
+response selection; Question 3 helper reset; and answer retention across Back
+and Next. The journey changes Question 1 from 1 to 4, retains responses
+2, 2, 0, and 3 for Questions 2–5, then answers Question 6 with 4 using the
+keyboard. It submits with Enter and verifies the exact 15 / 24 result, one
+canonical score/timestamp record, local-only GET requests, and no answer or
+additional-storage leakage. Run it with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_questionnaire_edge_cases_execute_in_a_real_browser -v 2
+```
