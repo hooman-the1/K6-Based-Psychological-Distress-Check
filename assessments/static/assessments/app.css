@@ -31,6 +31,16 @@ html {
     scroll-behavior: auto;
 }
 
+html:has([data-questionnaire-page]),
+html:has([data-active-result]) {
+    scrollbar-width: none;
+}
+
+html:has([data-questionnaire-page])::-webkit-scrollbar,
+html:has([data-active-result])::-webkit-scrollbar {
+    display: none;
+}
+
 body {
     display: flow-root;
     min-height: 100vh;

@@ -151,6 +151,9 @@ Required route wiring:
 The Questionnaire keeps one document-flow column at every width. Its page
 heading is separated from the form by 16px. The visible question count remains
 14px/1.5 muted supporting text with 8px before the progress element.
+Questionnaire and Result documents keep vertical scrolling enabled while
+suppressing the route-local scrollbar track so a reserved desktop scrollbar
+cannot alter the shared shell's exact viewport-relative width and gutters.
 
 The native progress element keeps its accessible label and per-question value
 with a maximum of 6. It fills the content width and is 8px high, with no border
