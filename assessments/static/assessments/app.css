@@ -293,6 +293,23 @@ progress + h2 {
     height: auto;
 }
 
+[data-history-cutoff-line] {
+    fill: none;
+    stroke: var(--color-muted);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+[data-history-score-line] {
+    fill: none;
+    stroke: var(--color-primary);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: none;
+    vector-effect: non-scaling-stroke;
+}
+
 [data-question-step] > .response-options {
     display: grid;
     min-inline-size: 0;
