@@ -453,10 +453,21 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
 
         self.assertEqual(result, "assessment history browser scenario passed")
 
+    @skipUnless(edge_path.is_file() and node_path, "requires Edge and Node.js")
+    def test_history_availability_executes_in_a_real_browser(self):
+        result = self.run_questionnaire_browser_scenario(
+            script_name="history_availability_browser_scenario.js",
+            success_message="history availability browser scenario passed",
+            additional_urls=(f"{self.live_server_url}{reverse('history')}",),
+        )
+
+        self.assertEqual(result, "history availability browser scenario passed")
+
     def run_questionnaire_browser_scenario(
         self,
         script_name="questionnaire_browser_scenario.js",
         success_message="questionnaire browser scenario passed",
+        additional_urls=(),
     ):
         debugging_port = self.get_available_port()
         test_url = f"{self.live_server_url}{reverse('test')}"
@@ -494,6 +505,7 @@ class QuestionnaireBrowserInteractionTests(StaticLiveServerTestCase):
                         websocket_url,
                         test_url,
                         home_url,
+                        *additional_urls,
                     ],
                     capture_output=True,
                     check=False,
