@@ -2,6 +2,15 @@ const [websocketUrl, testUrl, homeUrl] = process.argv.slice(2);
 
 const appOrigin = new URL(testUrl).origin;
 const storageKey = "k6-based-distress-check.history.v1";
+const expectedInitialRequestPaths = [
+    "/test",
+    "/static/assessments/app.css",
+    "/static/assessments/k6-scoring.js",
+    "/static/assessments/result-content.js",
+    "/static/assessments/assessment-history.js",
+    "/static/assessments/app.js",
+    "/favicon.ico",
+];
 const choices = [
     "None of the time",
     "A little of the time",
@@ -99,8 +108,10 @@ class DevToolsClient {
 
 const client = await DevToolsClient.connect(websocketUrl);
 const requests = [];
+const requestCheckpoints = [];
 const exceptions = [];
 const dialogs = [];
+let settledRequestCount = null;
 client.on("Network.requestWillBeSent", ({ request }) => requests.push(request));
 client.on("Runtime.exceptionThrown", ({ exceptionDetails }) => exceptions.push(exceptionDetails));
 client.on("Page.javascriptDialogOpening", ({ message }) => dialogs.push(message));
@@ -129,6 +140,21 @@ const waitFor = async (predicate, message) => {
         await delay(50);
     }
     throw new Error(message);
+};
+
+const assertExpectedRequest = (request, context) => {
+    const url = new URL(request.url);
+    assert(request.method === "GET" && request.postData === undefined &&
+        url.origin === appOrigin && url.search === "" && url.hash === "" &&
+        expectedInitialRequestPaths.includes(url.pathname),
+    `${context}: unexpected request ${request.method} ${request.url}`);
+};
+
+const checkpointNoNewRequest = (context) => {
+    if (settledRequestCount === null) return;
+    requestCheckpoints.push({ context, count: requests.length });
+    assert(requests.length === settledRequestCount,
+        `${context}: interaction caused a request after initial assets settled`);
 };
 
 const pointForVisibleText = async (selector, text) => {
@@ -191,6 +217,15 @@ const focusRadioByKeyboard = async (question, value, context) => {
         await pressKey("ArrowRight", "ArrowRight", 39);
     }
     throw new Error(`${context}: keyboard navigation did not reach response ${value}`);
+};
+
+const assertFocusedRadioIsUnchecked = async (question, value, context) => {
+    const focusState = await evaluate(`(() => {
+        const radio = document.querySelector('[data-question-step="${question}"] input[value="${value}"]');
+        return { focused: document.activeElement === radio, checked: radio.checked };
+    })()`);
+    assert(focusState.focused && !focusState.checked,
+        `${context}: target radio must be focused and unchecked immediately before Space`);
 };
 
 const snapshot = () => evaluate(`(() => {
@@ -272,6 +307,7 @@ const assertQuestion = async (
     assert(state.rawHistory === null && state.localKeys.length === 0 &&
         state.sessionLength === 0 && state.cookie === "",
     `${context}: questionnaire interaction persisted data before completion`);
+    checkpointNoNewRequest(context);
     return state;
 };
 
@@ -324,6 +360,13 @@ try {
     await waitFor('location.pathname === "/test" && document.readyState === "complete" && Boolean(document.querySelector("[data-questionnaire]"))',
         "fresh questionnaire did not load");
 
+    requests.forEach((request) => assertExpectedRequest(request, "initial page load"));
+    const observedInitialPaths = requests.map((request) => new URL(request.url).pathname).sort();
+    assert(JSON.stringify(observedInitialPaths) ===
+        JSON.stringify([...expectedInitialRequestPaths].sort()),
+    `initial page load requests changed: ${JSON.stringify(observedInitialPaths)}`);
+    settledRequestCount = requests.length;
+
     await assertQuestion(1, null, "initial Question 1", { totalSelectedCount: 0 });
     await exerciseDisabledForward(1);
     await selectByPointer(1, "A little of the time", 1);
@@ -331,6 +374,10 @@ try {
     await assertQuestion(2, null, "initial Question 2", { totalSelectedCount: 1 });
 
     await focusRadioByKeyboard(2, 2, "Question 2 Some of the time");
+    await assertFocusedRadioIsUnchecked(2, 2, "Question 2 before Space");
+    await assertQuestion(2, null, "Question 2 immediately before Space", {
+        totalSelectedCount: 1,
+    });
     await pressKey(" ", "Space", 32);
     let state = await assertQuestion(2, "Some of the time", "Question 2 after Space", {
         totalSelectedCount: 2,
@@ -389,12 +436,17 @@ try {
     }
 
     await focusRadioByKeyboard(6, 4, "Question 6 All of the time");
+    await assertFocusedRadioIsUnchecked(6, 4, "Question 6 before Space");
+    await assertQuestion(6, null, "Question 6 immediately before Space", {
+        totalSelectedCount: 5,
+    });
     await pressKey(" ", "Space", 32);
     state = await assertQuestion(6, "All of the time", "Question 6 after Space", {
         totalSelectedCount: 6,
     });
     assert(!state.activeIsForward, "Question 6 Space selection auto-submitted or moved focus to Submit");
     await focusByTab('[data-question-step="6"] [data-questionnaire-submit]', "Question 6 See my result");
+    checkpointNoNewRequest("before accepted keyboard submission");
     const beforeCompletion = await evaluate("Date.now()");
     await pressKey("Enter", "Enter", 13);
     await waitFor('location.pathname === "/result" && Boolean(document.querySelector("[data-active-result]"))',
@@ -448,14 +500,10 @@ try {
 
     assert(exceptions.length === 0, `edge journey exposed an exception: ${JSON.stringify(exceptions)}`);
     assert(dialogs.length === 0, "edge journey opened a dialog");
-    assert(requests.every((request) => request.method === "GET" &&
-        request.postData === undefined && new URL(request.url).origin === appOrigin),
-    "edge journey made a POST, data-bearing, or remote request");
-    assert(requests.some((request) => new URL(request.url).pathname === "/test") &&
-        requests.every((request) => {
-            const url = new URL(request.url);
-            return url.search === "" && url.hash === "";
-        }), "edge journey exposed data through an application URL");
+    requests.forEach((request) => assertExpectedRequest(request, "full edge journey"));
+    assert(requests.length === settledRequestCount &&
+        requestCheckpoints.every((checkpoint) => checkpoint.count === settledRequestCount),
+    "edge journey made a request after the initial navigation and static assets");
 
     console.log("questionnaire edge cases browser scenario passed");
 } finally {
