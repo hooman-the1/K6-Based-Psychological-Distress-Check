@@ -9,5 +9,29 @@
         <p>No saved results yet.</p>
         <a href="{% url 'test' %}">Take Test</a>
     </section>
+    <figure data-history-chart-container hidden>
+        <h2>Score trend</h2>
+        <svg
+            data-history-chart
+            role="img"
+            aria-label="Saved score trend from oldest to newest"
+            viewBox="0 0 320 180"
+            width="100%"
+            preserveAspectRatio="xMidYMid meet"
+        >
+            <line
+                data-history-cutoff-line
+                x1="24"
+                x2="296"
+                y1="83.83333333333333"
+                y2="83.83333333333333"
+                stroke="currentColor"
+                stroke-dasharray="4 4"
+            ></line>
+        </svg>
+        <figcaption data-history-chart-explanation>
+            Scores are shown from oldest to newest. The horizontal line marks the cutoff score of 13.
+        </figcaption>
+    </figure>
     <ul data-history-results hidden></ul>
 {% endblock %}

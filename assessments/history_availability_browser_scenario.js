@@ -321,9 +321,11 @@ const snapshot = () =>
             ? [chartContainer, ...chartContainer.querySelectorAll("*")]
             : [];
         return {
+            url: location.href,
             pathname: location.pathname,
             search: location.search,
             hash: location.hash,
+            historyState: history.state,
             heading: document.querySelector("h1")?.textContent.trim() ?? null,
             historyLinkCount: historyLinks.length,
             historyLinkVisible: isVisible(historyLink),
@@ -355,6 +357,9 @@ const snapshot = () =>
                 document.querySelectorAll("canvas, svg, [data-history-chart]")
             ).filter(isVisible).length,
             chart: {
+                visibleContainerCount: Array.from(
+                    document.querySelectorAll("[data-history-chart-container]")
+                ).filter(isVisible).length,
                 containerVisible: isVisible(chartContainer),
                 containerTag: chartContainer?.tagName.toLowerCase() ?? null,
                 appearsBeforeResults:
@@ -379,18 +384,23 @@ const snapshot = () =>
                     "[data-history-cutoff-line]"
                 ).length ?? 0,
                 cutoff: cutoffLine ? {
+                    visible: isVisible(cutoffLine),
                     x1: Number(cutoffLine.getAttribute("x1")),
                     x2: Number(cutoffLine.getAttribute("x2")),
                     y1: Number(cutoffLine.getAttribute("y1")),
                     y2: Number(cutoffLine.getAttribute("y2")),
                     dash: cutoffLine.getAttribute("stroke-dasharray"),
+                    stroke: cutoffLine.getAttribute("stroke"),
                 } : null,
                 scoreLineCount: chart?.querySelectorAll(
                     "[data-history-score-line]"
                 ).length ?? 0,
                 scoreLinePoints: scoreLine?.getAttribute("points") ?? null,
                 scoreLineFill: scoreLine?.getAttribute("fill") ?? null,
+                scoreLineStroke: scoreLine?.getAttribute("stroke") ?? null,
+                scoreLineVisible: isVisible(scoreLine),
                 points: scorePoints.map((point) => ({
+                    visible: isVisible(point),
                     x: Number(point.getAttribute("cx")),
                     y: Number(point.getAttribute("cy")),
                     radius: Number(point.getAttribute("r")),
@@ -399,6 +409,9 @@ const snapshot = () =>
                 interactiveCount: chartContainer?.querySelectorAll(
                     "a, button, form, input, select, textarea, [tabindex]"
                 ).length ?? 0,
+                focusableCount: chartElements.filter(
+                    (element) => element.tabIndex >= 0
+                ).length,
                 animationElementCount: chartContainer?.querySelectorAll(
                     "animate, animateMotion, animateTransform, set"
                 ).length ?? 0,
@@ -561,6 +574,7 @@ const assertChart = (state, scores, context) => {
         y: 164 - (score / 24) * 148,
     }));
     assert(state.visibleChartCount === 1, `${context}: expected one inline SVG chart`);
+    assert(chart.visibleContainerCount === 1, `${context}: expected one chart figure`);
     assert(chart.containerVisible, `${context}: chart figure is hidden`);
     assert(chart.containerTag === "figure", `${context}: chart container is not a figure`);
     assert(chart.appearsBeforeResults, `${context}: chart is not above the results list`);
@@ -582,6 +596,7 @@ const assertChart = (state, scores, context) => {
     );
     assert(chart.titleCount === 0, `${context}: chart contains a tooltip title`);
     assert(chart.cutoffLineCount === 1, `${context}: cutoff line count is wrong`);
+    assert(chart.cutoff.visible, `${context}: cutoff line is hidden`);
     assert(chart.cutoff.x1 === 24 && chart.cutoff.x2 === 296, `${context}: cutoff x bounds are wrong`);
     assert(
         approximatelyEqual(chart.cutoff.y1, expectedCutoffY) &&
@@ -589,8 +604,11 @@ const assertChart = (state, scores, context) => {
         `${context}: cutoff y coordinate is wrong`,
     );
     assert(Boolean(chart.cutoff.dash), `${context}: cutoff line is not dashed`);
+    assert(chart.cutoff.stroke !== "none", `${context}: cutoff line has no stroke`);
     assert(chart.scoreLineCount === 1, `${context}: score polyline count is wrong`);
     assert(chart.scoreLineFill === "none", `${context}: score polyline is filled`);
+    assert(chart.scoreLineStroke !== "none", `${context}: score polyline has no stroke`);
+    assert(chart.scoreLineVisible, `${context}: score polyline is hidden`);
     assert(chart.points.length === scores.length, `${context}: score point count is wrong`);
     for (let index = 0; index < chart.points.length; index += 1) {
         const point = chart.points[index];
@@ -598,6 +616,7 @@ const assertChart = (state, scores, context) => {
         assert(approximatelyEqual(point.x, expected.x), `${context}: point ${index} x is wrong`);
         assert(approximatelyEqual(point.y, expected.y), `${context}: point ${index} y is wrong`);
         assert(point.radius === 3, `${context}: point ${index} radius is wrong`);
+        assert(point.visible, `${context}: point ${index} is hidden`);
         assert(
             point.namespace === "http://www.w3.org/2000/svg",
             `${context}: point ${index} was not created in the SVG namespace`,
@@ -618,6 +637,7 @@ const assertChart = (state, scores, context) => {
         );
     }
     assert(chart.interactiveCount === 0, `${context}: chart contains interactive content`);
+    assert(chart.focusableCount === 0, `${context}: chart contains a focus target`);
     assert(chart.animationElementCount === 0, `${context}: chart contains SVG animation`);
     assert(!chart.hasEventHandler, `${context}: chart has an event handler`);
     assert(!chart.hasPointerCursor, `${context}: chart uses a pointer cursor`);
@@ -813,6 +833,8 @@ try {
     await assertPopulatedHistory(state);
     assertChart(state, expectedOldestFirstScores, "populated History");
     const chartBeforeInteraction = JSON.stringify({
+        url: state.url,
+        historyState: state.historyState,
         line: state.chart.scoreLinePoints,
         points: state.chart.points,
         rows: state.visibleResultRows.map((row) => row.values),
@@ -823,6 +845,8 @@ try {
     state = await snapshot();
     assert(
         JSON.stringify({
+            url: state.url,
+            historyState: state.historyState,
             line: state.chart.scoreLinePoints,
             points: state.chart.points,
             rows: state.visibleResultRows.map((row) => row.values),

@@ -6,6 +6,10 @@ const historyUnavailableNotice = document.querySelector(
 if (historyUnavailableNotice) {
     const historyLink = document.querySelector("[data-history-link]");
     const historyEmptyState = document.querySelector("[data-history-empty]");
+    const historyChartContainer = document.querySelector(
+        "[data-history-chart-container]",
+    );
+    const historyChart = document.querySelector("[data-history-chart]");
     const historyResultsList = document.querySelector("[data-history-results]");
     let historyResults = null;
 
@@ -19,6 +23,7 @@ if (historyUnavailableNotice) {
     }
 
     const isHistoryAvailable = historyResults !== null;
+    const hasResults = isHistoryAvailable && historyResults.length !== 0;
     if (historyLink) {
         historyLink.hidden = !isHistoryAvailable;
     }
@@ -27,8 +32,39 @@ if (historyUnavailableNotice) {
         historyEmptyState.hidden =
             !isHistoryAvailable || historyResults.length !== 0;
     }
+    if (historyChartContainer) {
+        historyChartContainer.hidden = !hasResults;
+    }
+    if (historyChart && hasResults) {
+        const svgNamespace = "http://www.w3.org/2000/svg";
+        const pointCoordinates = historyResults.map((result, index) => ({
+            x:
+                historyResults.length === 1
+                    ? 160
+                    : 24 + index * (272 / (historyResults.length - 1)),
+            y: 164 - (result.score / 24) * 148,
+        }));
+        const scoreLine = document.createElementNS(svgNamespace, "polyline");
+        scoreLine.dataset.historyScoreLine = "";
+        scoreLine.setAttribute(
+            "points",
+            pointCoordinates.map(({ x, y }) => `${x},${y}`).join(" "),
+        );
+        scoreLine.setAttribute("fill", "none");
+        scoreLine.setAttribute("stroke", "currentColor");
+        historyChart.append(scoreLine);
+
+        for (const { x, y } of pointCoordinates) {
+            const scorePoint = document.createElementNS(svgNamespace, "circle");
+            scorePoint.dataset.historyScorePoint = "";
+            scorePoint.setAttribute("cx", x);
+            scorePoint.setAttribute("cy", y);
+            scorePoint.setAttribute("r", 3);
+            scorePoint.setAttribute("fill", "currentColor");
+            historyChart.append(scorePoint);
+        }
+    }
     if (historyResultsList) {
-        const hasResults = isHistoryAvailable && historyResults.length !== 0;
         historyResultsList.hidden = !hasResults;
 
         if (hasResults) {
