@@ -291,8 +291,10 @@ const resultSnapshot = () =>
 
 const installSubmissionSpies = (saveMode = "delegate") =>
     evaluate(`(() => {
-        const original = window.K6Scoring.calculateK6Score;
-        const originalGetResultContent = window.ResultContent?.getResultContent;
+        const originalScoring = window.K6Scoring;
+        const originalResultContent = window.ResultContent;
+        const original = originalScoring.calculateK6Score;
+        const originalGetResultContent = originalResultContent?.getResultContent;
         const originalAssessmentHistory = window.AssessmentHistory;
         const originalDateNow = Date.now;
         window.__issue10TestScoringCallCount = 0;
@@ -305,6 +307,8 @@ const installSubmissionSpies = (saveMode = "delegate") =>
         window.__issue15TestSaveCalls = [];
         window.__issue15TestSaveResults = [];
         window.__issue15TestSaveThrows = 0;
+        window.__issue15TestOriginalScoring = originalScoring;
+        window.__issue15TestOriginalResultContent = originalResultContent;
         window.__issue15TestOriginalAssessmentHistory = originalAssessmentHistory;
         window.__issue15TestOriginalDateNow = originalDateNow;
         Object.freeze = (value) => {
@@ -391,6 +395,8 @@ const readAndClearSubmissionSpies = () =>
             saveThrows: window.__issue15TestSaveThrows,
         };
         Object.freeze = window.__issue10TestOriginalFreeze;
+        window.K6Scoring = window.__issue15TestOriginalScoring;
+        window.ResultContent = window.__issue15TestOriginalResultContent;
         Date.now = window.__issue15TestOriginalDateNow;
         window.AssessmentHistory = window.__issue15TestOriginalAssessmentHistory;
         delete window.__issue10TestScoringCallCount;
@@ -403,6 +409,8 @@ const readAndClearSubmissionSpies = () =>
         delete window.__issue15TestSaveCalls;
         delete window.__issue15TestSaveResults;
         delete window.__issue15TestSaveThrows;
+        delete window.__issue15TestOriginalScoring;
+        delete window.__issue15TestOriginalResultContent;
         delete window.__issue15TestOriginalAssessmentHistory;
         delete window.__issue15TestOriginalDateNow;
         return evidence;
