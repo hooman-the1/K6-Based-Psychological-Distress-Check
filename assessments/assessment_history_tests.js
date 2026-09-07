@@ -16,14 +16,23 @@ class FakeHistoryStoragePort {
         this.writes = [];
         this.readResult = null;
         this.writeResult = null;
+        this.removeResult = null;
+        this.useReadResult = false;
+        this.useRemoveResult = false;
         this.readError = null;
         this.writeError = null;
+        this.removeError = null;
+        this.removals = [];
+        this.removeLeavesValue = false;
     }
 
     read(key) {
         this.reads.push(key);
         if (this.readError) {
             throw this.readError;
+        }
+        if (this.useReadResult) {
+            return this.readResult;
         }
         return this.readResult ?? { ok: true, value: this.value };
     }
@@ -37,6 +46,20 @@ class FakeHistoryStoragePort {
             return this.writeResult;
         }
         this.value = value;
+        return { ok: true };
+    }
+
+    remove(key) {
+        this.removals.push(key);
+        if (this.removeError) {
+            throw this.removeError;
+        }
+        if (this.useRemoveResult || this.removeResult) {
+            return this.removeResult;
+        }
+        if (!this.removeLeavesValue && key === storageKey) {
+            this.value = null;
+        }
         return { ok: true };
     }
 }
@@ -53,14 +76,101 @@ const createResults = (count, firstTimestamp = 1000) =>
     }));
 
 describe("AssessmentHistory", () => {
-    test("exposes only the two non-throwing result-object operations", () => {
+    test("exposes exactly the three ordered non-throwing result-object operations", () => {
         const { history } = createHistory();
 
-        assert.deepEqual(Object.keys(history), ["getResults", "saveResult"]);
+        assert.deepEqual(Object.keys(history), [
+            "getResults",
+            "saveResult",
+            "clearResults",
+        ]);
         assert.deepEqual(history.getResults(), { ok: true, results: [] });
         assert.deepEqual(history.saveResult({ score: 0, timestamp: 0 }), {
             ok: true,
         });
+        assert.equal(history.clearResults.length, 0);
+        let clearResult;
+        assert.doesNotThrow(() => {
+            clearResult = history.clearResults();
+        });
+        assert.deepEqual(clearResult, { ok: true });
+    });
+
+    test("clears populated, absent, and malformed history by removing only the exact key", () => {
+        for (const storedValue of [
+            '[{"score":12,"timestamp":1000}]',
+            null,
+            "malformed history",
+        ]) {
+            const { history, port } = createHistory(storedValue);
+            assert.deepEqual(history.clearResults(), { ok: true });
+            assert.deepEqual(port.removals, [storageKey]);
+            assert.deepEqual(port.reads, [storageKey]);
+            assert.deepEqual(port.writes, []);
+            assert.equal(port.value, null);
+            assert.deepEqual(history.getResults(), { ok: true, results: [] });
+        }
+    });
+
+    test("maps failed or throwing removal to unavailable without verification or retry", () => {
+        const unavailable = { ok: false, reason: "storage-unavailable" };
+
+        for (const failure of [
+            { useRemoveResult: true, removeResult: unavailable },
+            {
+                useRemoveResult: true,
+                removeResult: { ok: false, reason: "another-failure" },
+            },
+            { useRemoveResult: true, removeResult: undefined },
+            { removeError: new Error("remove denied") },
+        ]) {
+            const port = new FakeHistoryStoragePort("stored history");
+            Object.assign(port, failure);
+            const history = createAssessmentHistory(port);
+
+            let clearResult;
+            assert.doesNotThrow(() => {
+                clearResult = history.clearResults();
+            });
+            assert.deepEqual(clearResult, unavailable);
+            assert.deepEqual(port.removals, [storageKey]);
+            assert.deepEqual(port.reads, []);
+            assert.deepEqual(port.writes, []);
+            assert.equal(port.value, "stored history");
+        }
+    });
+
+    test("requires one successful absent-key verification after removal", () => {
+        const unavailable = { ok: false, reason: "storage-unavailable" };
+        const verificationFailures = [
+            { useReadResult: true, readResult: unavailable },
+            {
+                useReadResult: true,
+                readResult: { ok: false, reason: "another-failure" },
+            },
+            { useReadResult: true, readResult: undefined },
+            {
+                useReadResult: true,
+                readResult: { ok: true, value: "history remains" },
+            },
+            { readError: new Error("verification denied") },
+            { removeLeavesValue: true },
+        ];
+
+        for (const failure of verificationFailures) {
+            const port = new FakeHistoryStoragePort("history remains");
+            Object.assign(port, failure);
+            const history = createAssessmentHistory(port);
+
+            let clearResult;
+            assert.doesNotThrow(() => {
+                clearResult = history.clearResults();
+            });
+            assert.deepEqual(clearResult, unavailable);
+            assert.deepEqual(port.removals, [storageKey]);
+            assert.deepEqual(port.reads, [storageKey]);
+            assert.deepEqual(port.writes, []);
+        }
     });
 
     test("uses the one exact key and writes canonical compact JSON", () => {
