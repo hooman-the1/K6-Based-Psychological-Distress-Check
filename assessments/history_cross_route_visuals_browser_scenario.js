@@ -663,6 +663,32 @@ const assertCrossRouteFoundation = (state, viewport, context) => {
                 control.style.borderRadius === "8px",
             `${context}: shared button box model changed`,
         );
+        if (control.disabled) {
+            assert(control.style.backgroundColor === "rgb(228, 231, 235)" &&
+                control.style.borderColor === colors.border && control.style.color === colors.muted &&
+                control.style.cursor === "not-allowed" && control.style.opacity === "1",
+            `${context}: disabled button state changed`);
+        } else if (control.classNames.includes("button--primary")) {
+            assert([colors.primary, colors.primaryHover].includes(control.style.backgroundColor) &&
+                control.style.backgroundColor === control.style.borderColor &&
+                control.style.color === colors.surface && control.style.cursor === "pointer",
+            `${context}: primary button state changed`);
+        } else if (control.classNames.includes("button--secondary")) {
+            assert(control.style.borderColor === colors.primary &&
+                [colors.surface, "rgb(234, 242, 251)"].includes(control.style.backgroundColor) &&
+                [colors.primary, colors.primaryHover].includes(control.style.color),
+            `${context}: secondary button state changed`);
+        } else if (control.classNames.includes("button--danger")) {
+            assert([colors.danger, colors.dangerHover].includes(control.style.backgroundColor) &&
+                control.style.backgroundColor === control.style.borderColor &&
+                control.style.color === colors.surface,
+            `${context}: danger button state changed`);
+        } else if (control.classNames.includes("button--text")) {
+            assert(["rgba(0, 0, 0, 0)", "rgb(234, 242, 251)"].includes(control.style.backgroundColor) &&
+                [colors.primary, colors.primaryHover].includes(control.style.color) &&
+                control.style.textDecorationLine.includes("underline"),
+            `${context}: text button state changed`);
+        }
     }
     for (const group of state.actionGroups) {
         for (let index = 1; index < group.children.length; index += 1) {
@@ -1014,6 +1040,7 @@ try {
     await goForward(2);
     await waitForQuestion(3);
     await pointerClick('[data-question-step="3"] [data-question-helper]');
+    await auditSharedAtAllWidths("expanded Question 3 helper and Back/Next controls");
     await setViewport(viewports[2]);
     await captureScreenshot("questionnaire-helper-768");
     await selectResponse(3, 2);
