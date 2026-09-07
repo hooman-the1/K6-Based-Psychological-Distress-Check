@@ -320,7 +320,13 @@ const pageSnapshot = () =>
             historyLinkRectCount: historyLink?.getClientRects().length ?? 0,
             historyLinkFocused: document.activeElement === historyLink,
             unavailableVisible: visible(unavailable),
+            visibleUnavailableCount: Array.from(
+                document.querySelectorAll("[data-history-unavailable]")
+            ).filter(visible).length,
             unavailableText: unavailable?.textContent.trim() ?? null,
+            visibleParagraphs: Array.from(document.querySelectorAll("p"))
+                .filter(visible)
+                .map((paragraph) => paragraph.textContent.trim()),
             emptyVisible: visible(empty),
             takeTestVisible: visible(takeTest),
             chartVisible: visible(chartContainer),
@@ -410,7 +416,8 @@ const assertUnavailableHome = async (context) => {
         `${context}: Home heading changed`,
     );
     assert(
-        state.unavailableVisible && state.unavailableText === unavailableNotice,
+        state.unavailableVisible && state.visibleUnavailableCount === 1 &&
+            state.unavailableText === unavailableNotice,
         `${context}: unavailable notice is missing or wrong`,
     );
     assert(
@@ -428,7 +435,8 @@ const assertUnavailableHistory = async (context) => {
     const state = await pageSnapshot();
     assert(state.heading === "History", `${context}: History heading changed`);
     assert(
-        state.unavailableVisible && state.unavailableText === unavailableNotice,
+        state.unavailableVisible && state.visibleUnavailableCount === 1 &&
+            state.unavailableText === unavailableNotice,
         `${context}: unavailable notice is missing or wrong`,
     );
     assert(
@@ -436,6 +444,11 @@ const assertUnavailableHistory = async (context) => {
             !state.listVisible && state.rowCount === 0 && state.scoreLineCount === 0 &&
             state.pointYs.length === 0 && !state.clearVisible,
         `${context}: stale empty or populated History content remains`,
+    );
+    assert(
+        JSON.stringify(state.visibleParagraphs) ===
+            JSON.stringify([unavailableNotice]),
+        `${context}: unavailable History exposes alternate copy or error detail`,
     );
 };
 
@@ -631,6 +644,7 @@ try {
     await assertQuestionnaireOnly("available questionnaire");
     await completeAssessment(availableResponses, "available completion");
     const beforeCompletion = await evaluate("Date.now()");
+    const requestsBeforeAvailableCompletion = client.requests.length;
     await activateVisible('[data-question-step="6"] button', "See my result");
     await waitFor(
         'location.pathname === "/result" && Boolean(document.querySelector("[data-active-result]"))',
@@ -642,6 +656,10 @@ try {
         "At or above the cutoff",
         "Your score is at or above the serious or elevated psychological distress cutoff of 13.",
         "available completion",
+    );
+    assert(
+        client.requests.length === requestsBeforeAvailableCompletion,
+        "available completion caused a post-load request",
     );
     state = await pageSnapshot();
     assert(
@@ -746,6 +764,7 @@ try {
     await evaluate(
         'window.__issue25RetainedClearButton = document.querySelector("[data-clear-history]")',
     );
+    const requestsBeforeSuccessfulClear = client.requests.length;
     await activateVisible("button", "Clear All History");
     await waitFor(
         'document.querySelector("[data-history-empty]")?.hidden === false',
@@ -762,6 +781,10 @@ try {
     );
     storage = await storageSnapshot();
     assertStorageIsolation(storage, null, "successful clear");
+    assert(
+        client.requests.length === requestsBeforeSuccessfulClear,
+        "successful clear caused a post-load request",
+    );
     await client.send("Page.reload", { ignoreCache: true });
     await waitFor(
         'location.pathname === "/history" && document.readyState === "complete"',
@@ -832,6 +855,11 @@ try {
     assert(
         (await evaluate("window.__issue25ClearResultsCalls")) === 1,
         "retained detached Clear button or lifecycle event retried the clear",
+    );
+    assert(
+        (await evaluate("window.__issue25GetResultsCalls")) === 1 &&
+            (await evaluate("window.__issue25SaveResultCalls")) === 0,
+        "failed clear retried its read or performed a fallback write",
     );
     assert(
         client.requests.length === requestsBeforeFailedClear,

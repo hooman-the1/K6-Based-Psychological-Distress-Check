@@ -172,3 +172,26 @@ leakage. Run it with:
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_questionnaire_edge_cases_execute_in_a_real_browser -v 2
 ```
+
+The history and storage-failure journey runs in the same fresh genuine-Edge
+profile at 320x900 with the browser timezone fixed to `America/New_York`. Its
+available-retention phase seeds 20 canonical score/timestamp records through the
+real `AssessmentHistory` boundary, completes a visible 14-point assessment, and
+checks oldest-record eviction, Result refresh, newest-first History, and the
+oldest-to-newest chart. The clear-success phase proves that only the canonical
+history key is removed and that the empty state survives reload. Separate
+clear-failure, malformed-storage, and throwing-storage phases prove fail-closed
+History states and successful questionnaire/Result completion when reads,
+clearing, or saving fail.
+
+Injected failures wrap only the application-owned `window.AssessmentHistory`
+boundary before application startup; they do not replace browser storage,
+scoring, Result content, time, or vendor objects. The journey also checks that
+answers and Result details never enter storage, URLs, browser history state,
+requests, cookies, or session storage; unrelated local storage is preserved;
+and no POST, remote request, dialog, or uncaught exception is exposed. Run it
+with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_history_and_failure_journey_executes_in_a_real_browser -v 2
+```
