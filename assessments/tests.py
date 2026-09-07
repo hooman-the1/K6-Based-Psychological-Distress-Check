@@ -674,7 +674,7 @@ class PageRouteTests(SimpleTestCase):
 
         self.assertRegex(
             stylesheet,
-            r"\*\s*\{[^}]*box-sizing:\s*border-box;[^}]*\}",
+            r"\*,\s*\*::before,\s*\*::after\s*\{[^}]*box-sizing:\s*border-box;[^}]*\}",
         )
         self.assertRegex(
             stylesheet,
