@@ -103,6 +103,7 @@ class ReleaseDocumentationTests(SimpleTestCase):
     def test_readme_defines_release_setup_and_browser_boundaries(self):
         readme_path = Path(__file__).resolve().parents[1] / "README.md"
         readme = readme_path.read_text(encoding="utf-8")
+        normalized_readme = " ".join(readme.split())
 
         required_sections = (
             "## Product scope",
@@ -170,7 +171,7 @@ class ReleaseDocumentationTests(SimpleTestCase):
         )
         for contract in required_contracts:
             with self.subTest(contract=contract):
-                self.assertIn(contract, readme)
+                self.assertIn(contract, normalized_readme)
 
 
 class QuestionnaireContentTests(SimpleTestCase):
