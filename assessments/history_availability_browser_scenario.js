@@ -232,6 +232,10 @@ const snapshot = () =>
         const historyLinks = links.filter((link) => link.textContent.trim() === "View History");
         const historyLink = historyLinks[0];
         const startTestLink = links.find((link) => link.textContent.trim() === "Start Test");
+        const takeTestLinks = links.filter((link) => link.textContent.trim() === "Take Test");
+        const emptyMessages = Array.from(document.querySelectorAll("p")).filter(
+            (message) => message.textContent.trim() === "No saved results yet."
+        );
         const notices = Array.from(document.querySelectorAll("p")).filter(
             (notice) => notice.textContent.trim() === ${JSON.stringify(unavailableNotice)}
         );
@@ -245,7 +249,24 @@ const snapshot = () =>
             historyLinkHref: historyLink?.href ?? null,
             startTestVisible: isVisible(startTestLink),
             startTestHref: startTestLink?.href ?? null,
+            visibleEmptyMessageCount: emptyMessages.filter(isVisible).length,
+            visibleTakeTestHrefs: takeTestLinks.filter(isVisible).map((link) => link.href),
             visibleNoticeTexts: notices.filter(isVisible).map((notice) => notice.textContent.trim()),
+            visibleResultListCount: Array.from(
+                document.querySelectorAll("[data-history-results]")
+            ).filter(isVisible).length,
+            visibleResultRowCount: Array.from(
+                document.querySelectorAll("[data-history-result]")
+            ).filter(isVisible).length,
+            visibleChartCount: Array.from(
+                document.querySelectorAll("canvas, svg, [data-history-chart]")
+            ).filter(isVisible).length,
+            visibleClearHistoryCount: Array.from(
+                document.querySelectorAll("button, a")
+            ).filter(
+                (control) => isVisible(control) &&
+                    control.textContent.trim() === "Clear All History"
+            ).length,
             dialogCount: document.querySelectorAll("dialog, [role='dialog'], [role='alertdialog']").length,
             getResultsCalls: window.__issue16GetResultsCalls,
             saveResultCalls: window.__issue16SaveResultCalls,
@@ -326,6 +347,24 @@ const assertUnavailableHistory = (state, mode) => {
     assert(state.saveResultCalls === 0, `${mode}: History performed a write probe`);
 };
 
+const assertEmptyHistory = (state) => {
+    assert(state.pathname === "/history", "empty History pathname changed");
+    assert(state.search === "" && state.hash === "", "empty History URL has extra data");
+    assert(state.heading === "History", "empty History heading changed");
+    assert(state.visibleEmptyMessageCount === 1, "empty History message is missing or duplicated");
+    assert(
+        JSON.stringify(state.visibleTakeTestHrefs) === JSON.stringify([testUrl]),
+        "empty History Take Test action is missing, duplicated, or wrong",
+    );
+    assert(state.visibleNoticeTexts.length === 0, "empty History shows unavailable notice");
+    assert(state.visibleResultListCount === 0, "empty History shows a result list");
+    assert(state.visibleResultRowCount === 0, "empty History shows a result row");
+    assert(state.visibleChartCount === 0, "empty History shows a chart");
+    assert(state.visibleClearHistoryCount === 0, "empty History shows Clear All History");
+    assert(state.getResultsCalls === 1, "empty History was not read exactly once");
+    assert(state.saveResultCalls === 0, "empty History performed a write probe");
+};
+
 try {
     await client.send("Runtime.enable");
     await client.send("Page.enable");
@@ -371,6 +410,18 @@ try {
     state = await snapshot();
     assertAvailableHome(state, "empty history");
     await assertSettledWithoutSideEffects("available Home", 1);
+
+    await pointerClickLink("View History");
+    await waitForInitializedPage("/history", "History", "available");
+    state = await snapshot();
+    assertEmptyHistory(state);
+    await assertSettledWithoutSideEffects("empty History", 1);
+
+    await pointerClickLink("Take Test");
+    await waitForInitializedPage("/test", "Test", "available");
+    state = await snapshot();
+    assert(state.getResultsCalls === 0, "empty-state Take Test caused a history read");
+    assert(state.saveResultCalls === 0, "empty-state Take Test created a history record");
 
     await evaluate(
         "window.__issue16OriginalBoundary.saveResult({ score: 12, timestamp: 1000 })",
