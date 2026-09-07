@@ -316,10 +316,17 @@ progress + h2 {
 [data-history-empty],
 [data-history-chart-container] {
     width: 100%;
-    margin-block-start: var(--space-4);
     border: 1px solid var(--color-border);
     border-radius: var(--space-2);
     background: var(--color-page);
+}
+
+.page-shell:has([data-history-results]) > :is(
+        [data-history-unavailable],
+        [data-history-empty],
+        [data-history-chart-container]
+    ) {
+    margin-block-start: var(--space-4);
 }
 
 [data-history-unavailable] {

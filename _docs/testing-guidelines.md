@@ -111,3 +111,32 @@ pixel-diff fixtures. Run it with:
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_history_and_cross_route_visuals_execute_in_a_real_browser -v 2
 ```
+
+The exact 24-shot review matrix is:
+
+- Home: `home-available-320.png`, `home-available-375.png`, and
+  `home-available-768.png`.
+- Questionnaire: `questionnaire-selected-320.png`,
+  `questionnaire-question-6-controls-375.png`, and
+  `questionnaire-helper-768.png`.
+- Result: `result-12-320.png`, `result-13-375.png`, and
+  `result-one-record-768.png`.
+- Empty History: `history-empty-320.png` and `history-empty-375.png`.
+- One-result History: `history-one-320.png` and `history-one-768.png`.
+- Three-result History: `history-three-320.png`,
+  `history-three-375.png`, and `history-three-768.png`.
+- Unavailable History: `history-unavailable-320.png` and
+  `history-unavailable-375.png`.
+- Post-clear History: `history-post-clear-success-320.png` and
+  `history-post-clear-failure-320.png`.
+- Twenty-result History top: `history-20-top-320.png` and
+  `history-20-top-768.png`.
+- Twenty-result History bottom: `history-20-bottom-320.png` and
+  `history-20-bottom-768.png`.
+
+Review top captures for full-width chart containment and the start of the
+newest-first list. Review bottom captures for an intact final row, visible Clear
+All History action, shell bottom spacing, document-only scrolling, and no
+horizontal or component overflow. The automated scenario additionally checks
+the same bottom reachability and focus-outline containment at 375px without
+adding a twenty-fifth screenshot.

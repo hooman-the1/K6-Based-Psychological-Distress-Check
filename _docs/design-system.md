@@ -250,6 +250,30 @@ Neither transition leaves stale chart, row, or Clear content visible. Long
 histories use document-only vertical scrolling, keep the final action reachable,
 and never introduce a component scrollbar or horizontal overflow.
 
+## Cross-route visual QA
+
+The final visual audit must run in genuine Edge at 320x900, 375x900, and
+768x1024. Across Home, Questionnaire, Result, and History it rechecks the exact
+token set, light color scheme, body surface and typography, shell geometry,
+heading and supporting type, shared buttons and links, minimum targets,
+16px/24px page rhythm, media containment, horizontal containment, and the
+reduced-motion override. Home must be audited with both available and
+unavailable history; the unavailable state keeps Start Test working.
+
+History coverage includes unavailable, empty, one, three, twenty, successful
+clear, and failed-clear states. Long History is scrolled to the document bottom
+at all three widths. Clear All History and its 3px/2px focus-visible outline
+must remain fully visible there; no nested scroller may be introduced. Fixed
+`America/Los_Angeles` browser time verifies exact local date and time copy.
+
+Each final audit writes the prescribed 24 non-golden screenshots to the system
+temporary directory `k6-issue22-history-cross-route-visuals`. Screenshots are
+human-review evidence, never pixel-diff fixtures. Review both top and bottom
+views of 20-result History at 320px and 768px, confirming chart containment at
+the top and final-row, Clear-action, shell-bottom, and document-scroll
+containment at the bottom. The exact capture matrix and focused command live in
+the testing guidelines.
+
 ## Motion and scope
 
 The default foundation has no transitions or animations on the shell, controls,
