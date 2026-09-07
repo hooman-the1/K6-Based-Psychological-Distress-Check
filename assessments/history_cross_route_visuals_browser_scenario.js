@@ -19,8 +19,31 @@ const colors = {
     muted: "rgb(82, 96, 109)",
     page: "rgb(247, 248, 250)",
     primary: "rgb(11, 92, 173)",
+    primaryHover: "rgb(8, 72, 135)",
     surface: "rgb(255, 255, 255)",
     text: "rgb(31, 41, 51)",
+};
+const expectedFontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const expectedTokens = {
+    "--color-page": "#f7f8fa",
+    "--color-surface": "#ffffff",
+    "--color-text": "#1f2933",
+    "--color-muted": "#52606d",
+    "--color-border": "#bcccdc",
+    "--color-primary": "#0b5cad",
+    "--color-primary-hover": "#084887",
+    "--color-on-primary": "#ffffff",
+    "--color-focus": "#7c3aed",
+    "--color-danger": "#9f1239",
+    "--color-danger-hover": "#7f1230",
+    "--color-disabled-bg": "#e4e7eb",
+    "--color-disabled-text": "#52606d",
+    "--space-1": "0.25rem",
+    "--space-2": "0.5rem",
+    "--space-3": "0.75rem",
+    "--space-4": "1rem",
+    "--space-5": "1.5rem",
+    "--space-6": "2rem",
 };
 const baseTimestamp = Date.parse("2026-09-01T12:00:00Z");
 const oneResult = [{ score: 13, timestamp: baseTimestamp }];
@@ -308,6 +331,37 @@ const pressTab = async (shift = false) => {
     });
 };
 
+const assertControlFocus = async (selector, viewport, context, containVertically = false) => {
+    await evaluate("document.activeElement?.blur()");
+    await pressTab(true);
+    await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+    const focus = await evaluate(`(() => {
+        const control = document.querySelector(${JSON.stringify(selector)});
+        const shell = document.querySelector(".page-shell").getBoundingClientRect();
+        const bounds = control.getBoundingClientRect();
+        const style = getComputedStyle(control);
+        return {
+            active: document.activeElement === control,
+            focusVisible: control.matches(":focus-visible"),
+            outlineColor: style.outlineColor,
+            outlineOffset: style.outlineOffset,
+            outlineStyle: style.outlineStyle,
+            outlineWidth: style.outlineWidth,
+            horizontallyContained: bounds.left - 5 >= shell.left + 1 &&
+                bounds.right + 5 <= shell.right - 1 && bounds.left - 5 >= 0 &&
+                bounds.right + 5 <= innerWidth,
+            verticallyContained: bounds.top - 5 >= 0 && bounds.bottom + 5 <= innerHeight,
+        };
+    })()`);
+    assert(
+        focus.active && focus.focusVisible && focus.outlineColor === colors.focus &&
+            focus.outlineOffset === "2px" && focus.outlineStyle === "solid" &&
+            focus.outlineWidth === "3px" && focus.horizontallyContained &&
+            (!containVertically || focus.verticallyContained),
+        `${context} at ${viewport.width}px: focus outline is wrong or clipped (${JSON.stringify(focus)})`,
+    );
+};
+
 const captureScreenshot = async (name, resetScroll = true) => {
     if (resetScroll) await evaluate("document.scrollingElement.scrollTop = 0");
     const screenshot = await client.send("Page.captureScreenshot", {
@@ -341,6 +395,7 @@ const pageSnapshot = () =>
             const computed = getComputedStyle(element);
             return {
                 alignSelf: computed.alignSelf,
+                alignItems: computed.alignItems,
                 animationName: computed.animationName,
                 backgroundColor: computed.backgroundColor,
                 borderColor: computed.borderTopColor,
@@ -353,6 +408,7 @@ const pageSnapshot = () =>
                 display: computed.display,
                 fill: computed.fill,
                 fontSize: computed.fontSize,
+                fontFamily: computed.fontFamily,
                 fontVariantNumeric: computed.fontVariantNumeric,
                 fontWeight: computed.fontWeight,
                 gap: computed.gap,
@@ -364,6 +420,7 @@ const pageSnapshot = () =>
                 gridRowStart: computed.gridRowStart,
                 gridTemplateColumns: computed.gridTemplateColumns,
                 justifySelf: computed.justifySelf,
+                justifyContent: computed.justifyContent,
                 lineHeight: computed.lineHeight,
                 listStyleType: computed.listStyleType,
                 marginBottom: computed.marginBottom,
@@ -371,6 +428,9 @@ const pageSnapshot = () =>
                 marginRight: computed.marginRight,
                 marginTop: computed.marginTop,
                 maxHeight: computed.maxHeight,
+                maxWidth: computed.maxWidth,
+                minHeight: computed.minHeight,
+                minWidth: computed.minWidth,
                 opacity: computed.opacity,
                 outlineColor: computed.outlineColor,
                 outlineOffset: computed.outlineOffset,
@@ -390,6 +450,8 @@ const pageSnapshot = () =>
                 strokeLinecap: computed.strokeLinecap,
                 strokeLinejoin: computed.strokeLinejoin,
                 strokeWidth: computed.strokeWidth,
+                textDecorationLine: computed.textDecorationLine,
+                textUnderlineOffset: computed.textUnderlineOffset,
                 transform: computed.transform,
                 transitionDuration: computed.transitionDuration,
                 vectorEffect: computed.vectorEffect,
@@ -415,6 +477,21 @@ const pageSnapshot = () =>
         const rows = Array.from(document.querySelectorAll("[data-history-result]"));
         const clear = document.querySelector("[data-clear-history]");
         const visibleFirstBlock = [unavailable, empty, figure].find(visible);
+        const visibleShellChildren = Array.from(shell.children).filter(visible);
+        const controls = Array.from(document.querySelectorAll(".button, .link")).filter(visible);
+        const supporting = Array.from(document.querySelectorAll(
+            ".question-count, small, figcaption, [data-history-result] > p:nth-of-type(2)"
+        )).find(visible);
+        const motionElements = Array.from(document.querySelectorAll(
+            ".page-shell, .button, .link, progress, .questionnaire, .questionnaire-step, " +
+            ".response-options, .response-option, [data-active-result], " +
+            "[data-active-result-score], [data-active-result-cutoff], " +
+            "[data-active-result-higher-score], [data-active-result-guidance], " +
+            "[data-active-result-resources], [data-history-unavailable], [data-history-empty], " +
+            "[data-history-results], [data-history-chart-container], [data-history-chart], " +
+            "[data-history-cutoff-line], [data-history-score-line], " +
+            "[data-history-score-point], [data-history-result]"
+        )).filter(visible);
         const root = getComputedStyle(document.documentElement);
         return {
             pathname: location.pathname,
@@ -434,14 +511,40 @@ const pageSnapshot = () =>
             mainCount: document.querySelectorAll("main.page-shell").length,
             headingCount: document.querySelectorAll("main.page-shell h1").length,
             forbiddenChromeCount: document.querySelectorAll("body > header, body > nav, body > footer, aside").length,
-            tokens: [
-                "--color-page", "--color-surface", "--color-text", "--color-muted",
-                "--color-border", "--color-primary", "--color-focus", "--color-danger",
-                "--space-2", "--space-3", "--space-4", "--space-5",
-            ].map((name) => [name, root.getPropertyValue(name).trim()]),
+            colorScheme: root.colorScheme,
+            scrollBehavior: root.scrollBehavior,
+            reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+            tokens: Object.fromEntries(
+                ${JSON.stringify(Object.keys(expectedTokens))}.map((name) =>
+                    [name, root.getPropertyValue(name).trim()])
+            ),
+            body: { style: style(document.body), margin: getComputedStyle(document.body).margin },
             shell: { rect: rect(shell), style: style(shell) },
             heading: { rect: rect(heading), style: style(heading), text: heading?.textContent.trim() },
             firstBlockGap: visibleFirstBlock ? rect(visibleFirstBlock).top - rect(heading).bottom : null,
+            directChildGaps: visibleShellChildren.slice(1).map((child, index) => ({
+                previousIsHeading: visibleShellChildren[index].tagName === "H1",
+                gap: rect(child).top - rect(visibleShellChildren[index]).bottom,
+            })),
+            supporting: supporting ? { style: style(supporting), text: supporting.textContent.trim() } : null,
+            controls: controls.map((control) => ({
+                classNames: Array.from(control.classList),
+                disabled: control.disabled === true,
+                rect: rect(control),
+                style: style(control),
+            })),
+            actionGroups: Array.from(document.querySelectorAll(".action-stack, .questionnaire-controls"))
+                .filter(visible)
+                .map((group) => ({
+                    style: style(group),
+                    children: Array.from(group.children).filter(visible).map(rect),
+                })),
+            mediaMaxWidths: Array.from(document.querySelectorAll("img, svg, canvas, video, iframe"))
+                .filter(visible).map((element) => getComputedStyle(element).maxWidth),
+            motion: motionElements.map((element) => ({
+                animationName: getComputedStyle(element).animationName,
+                transitionDuration: getComputedStyle(element).transitionDuration,
+            })),
             visibleStateCount: [unavailable, empty, figure].filter(visible).length,
             unavailable: {
                 rect: rect(unavailable), style: style(unavailable), text: unavailable?.textContent.trim(),
@@ -518,6 +621,69 @@ const pageSnapshot = () =>
 const expectedContentWidth = (width) => (width === 320 ? 246 : width === 375 ? 301 : 510);
 const expectedSvgWidth = (width) => (width === 320 ? 212 : width === 375 ? 267 : 476);
 
+const assertCrossRouteFoundation = (state, viewport, context) => {
+    assert(JSON.stringify(state.tokens) === JSON.stringify(expectedTokens),
+        `${context}: shared tokens changed`);
+    assert(state.colorScheme.split(" ").sort().join(" ") === "light only",
+        `${context}: color scheme changed`);
+    assert(
+        state.body.style.backgroundColor === colors.page && state.body.style.color === colors.text &&
+            state.body.style.fontFamily === expectedFontFamily && state.body.style.fontSize === "16px" &&
+            state.body.style.lineHeight === "24px" && state.body.style.fontWeight === "400" &&
+            state.body.margin === "0px",
+        `${context}: body surface or type changed`,
+    );
+    if (state.supporting) {
+        assert(state.supporting.style.fontSize === "14px" &&
+            state.supporting.style.lineHeight === "21px" &&
+            state.supporting.style.color === colors.muted,
+        `${context}: supporting text style changed`);
+    }
+    for (const control of state.controls) {
+        assert(control.rect.width >= 44 && control.rect.height >= 44 &&
+            control.rect.left >= 0 && control.rect.right <= viewport.width,
+        `${context}: a shared control is undersized or outside the viewport`);
+        if (control.classNames.includes("link")) {
+            assert(
+                ["flex", "inline-flex"].includes(control.style.display) &&
+                    control.style.alignItems === "center" && control.style.justifyContent === "center" &&
+                    control.style.minHeight === "44px" && control.style.color === colors.primary &&
+                    control.style.textDecorationLine.includes("underline") &&
+                    control.style.textUnderlineOffset === "2px",
+                `${context}: shared link presentation changed`,
+            );
+            continue;
+        }
+        assert(
+            control.classNames.includes("button") && ["flex", "inline-flex"].includes(control.style.display) &&
+                control.style.alignItems === "center" && control.style.justifyContent === "center" &&
+                control.style.fontSize === "16px" && control.style.fontWeight === "600" &&
+                control.style.lineHeight === "20px" && control.style.minWidth === "44px" &&
+                control.style.minHeight === "44px" && control.style.borderWidth === "1px" &&
+                control.style.borderRadius === "8px",
+            `${context}: shared button box model changed`,
+        );
+    }
+    for (const group of state.actionGroups) {
+        for (let index = 1; index < group.children.length; index += 1) {
+            const previous = group.children[index - 1];
+            const current = group.children[index];
+            assert(current.top - previous.bottom >= 8 || current.left - previous.right >= 8,
+                `${context}: adjacent controls overlap or lose minimum separation`);
+        }
+    }
+    assert(state.directChildGaps.every(({ previousIsHeading, gap }) =>
+        approximatelyEqual(gap, previousIsHeading ? 16 : 24)),
+    `${context}: shared 16px/24px page rhythm changed (${JSON.stringify(state.directChildGaps)})`);
+    assert(state.mediaMaxWidths.every((value) => value === "100%"),
+        `${context}: shared media containment changed`);
+    assert(state.reducedMotion && state.scrollBehavior === "auto" &&
+        state.motion.every(({ animationName, transitionDuration }) =>
+            animationName.split(", ").every((name) => name === "none") &&
+            transitionDuration.split(", ").every((duration) => duration === "0s")),
+    `${context}: reduced-motion invariants changed`);
+};
+
 const assertSharedPage = (state, viewport, context) => {
     const expectedShellWidth = viewport.width === 768 ? 576 : viewport.width - 32;
     const expectedGutter = viewport.width === 768 ? 96 : 16;
@@ -540,6 +706,7 @@ const assertSharedPage = (state, viewport, context) => {
     );
     assert(state.documentScrollWidth <= viewport.width,
         `${context}: horizontal overflow (${JSON.stringify(state.horizontalOverflowers)})`);
+    assertCrossRouteFoundation(state, viewport, context);
 };
 
 const assertEmptyHistory = (state, viewport, context = "empty History", expectedClearCalls = 0) => {
@@ -714,10 +881,12 @@ const assertPopulatedHistory = (state, viewport, results, context = "populated H
         );
         const [date, time, score, status] = row.values;
         assert(
-            date.style.gridColumnStart === "1" && date.style.gridRowStart === "1" &&
+                date.style.gridColumnStart === "1" && date.style.gridRowStart === "1" &&
                 date.style.fontSize === "16px" && date.style.lineHeight === "24px" && date.style.fontWeight === "600" &&
+                date.text === "Sep 1, 2026" &&
                 time.style.gridColumnStart === "1" && time.style.gridRowStart === "2" &&
                 time.style.fontSize === "14px" && time.style.lineHeight === "21px" && time.style.color === colors.muted &&
+                time.text === "5:00 AM" &&
                 score.style.gridColumnStart === "2" && score.style.gridRowStart === "1" && score.style.gridRowEnd === "3" &&
                 score.style.alignSelf === "center" && score.style.justifySelf === "end" &&
                 score.style.fontSize === "24px" && score.style.lineHeight === "30px" && score.style.fontWeight === "700" &&
@@ -726,7 +895,8 @@ const assertPopulatedHistory = (state, viewport, results, context = "populated H
                 status.style.gridColumnStart === "1" && status.style.gridColumnEnd === "-1" &&
                 status.style.gridRowStart === "3" && status.style.fontSize === "14px" &&
                 status.style.lineHeight === "21px" && status.style.fontWeight === "600" &&
-                status.style.color === colors.text,
+                status.style.color === colors.text && status.text ===
+                    (record.score >= 13 ? "At or above the cutoff" : "Below the cutoff"),
             `${context}: row ${index + 1} content grid or type is wrong (${JSON.stringify(row.values)})`,
         );
         if (index > 0) {
@@ -795,6 +965,9 @@ try {
     await client.send("Page.enable");
     await client.send("Network.enable");
     await client.send("Emulation.setTimezoneOverride", { timezoneId: "America/Los_Angeles" });
+    await client.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+    });
 
     await installBoundaryMode("available");
     await setViewport(viewports[0]);
@@ -809,6 +982,25 @@ try {
         assert(await evaluate('Boolean(document.querySelector("a[href=\\"/history\\"]"))'), "available Home hid View History");
         await captureScreenshot(`home-available-${viewport.width}`);
     }
+
+    await installBoundaryMode("unavailable-read");
+    await navigate(homeUrl,
+        'location.pathname === "/" && window.__issue22GetResultsCalls === 1',
+        "unavailable Home did not settle");
+    for (const viewport of viewports) {
+        await setViewport(viewport);
+        const state = await pageSnapshot();
+        assertSharedPage(state, viewport, "unavailable Home");
+        assert(
+            state.controls.length === 1 &&
+                await evaluate('Boolean(document.querySelector("a[href=\\"/test\\"]")) && document.querySelector("[data-history-link]").hidden && !document.querySelector("[data-history-unavailable]").hidden && document.querySelector("[data-history-unavailable]").textContent.trim() === "Saved history is unavailable in this browser."'),
+            `unavailable Home at ${viewport.width}px changed its Start Test or notice state`,
+        );
+        await assertControlFocus('a[href="/test"]', viewport, "unavailable Home Start Test");
+    }
+    await setViewport(viewports[0]);
+    await pointerClick('a[href="/test"]');
+    await waitFor('location.pathname === "/test"', "Start Test did not work from unavailable Home");
 
     await installBoundaryMode("available");
     await navigate(testUrl, 'location.pathname === "/test" && !document.querySelector("[data-question-step=\\"1\\"]").hidden', "Questionnaire did not load");
@@ -859,6 +1051,11 @@ try {
         await setViewport(viewport);
         await captureScreenshot(`history-empty-${viewport.width}`);
     }
+    for (const viewport of viewports) {
+        await setViewport(viewport);
+        await assertControlFocus('[data-history-empty] a[href="/test"]', viewport,
+            "empty History Take Test");
+    }
 
     await loadHistory(oneResult);
     await auditHistoryAtAllWidths(oneResult, assertPopulatedHistory, "one-result History");
@@ -884,20 +1081,10 @@ try {
     state = await pageSnapshot();
     assert(state.clear.style.backgroundColor === colors.dangerHover && state.clear.style.borderColor === colors.dangerHover,
         "Clear hover state is wrong");
-    await evaluate("document.activeElement.blur()");
-    await pressTab(true);
-    await evaluate('document.querySelector("[data-clear-history]").focus()');
-    state = await pageSnapshot();
-    const clearFocus = await evaluate(`(() => ({
-        active: document.activeElement === document.querySelector("[data-clear-history]"),
-        activeHtml: document.activeElement?.outerHTML,
-        focusVisible: document.querySelector("[data-clear-history]").matches(":focus-visible"),
-    }))()`);
-    assert(clearFocus.active && clearFocus.focusVisible &&
-        state.clear.style.outlineWidth === "3px" && state.clear.style.outlineStyle === "solid" &&
-        state.clear.style.outlineColor === colors.focus && state.clear.style.outlineOffset === "2px" &&
-        state.clear.rect.left - 5 >= state.shell.rect.left + 1,
-    `Clear focus-visible state is wrong or clipped (${JSON.stringify({ clear: state.clear, clearFocus })})`);
+    for (const viewport of viewports) {
+        await setViewport(viewport);
+        await assertControlFocus("[data-clear-history]", viewport, "three-result History Clear");
+    }
 
     await loadHistory(threeResults, "unavailable-read");
     await auditHistoryAtAllWidths(threeResults, (snapshot, viewport, _results, context) =>
@@ -935,10 +1122,12 @@ try {
 
     await loadHistory(twentyResults);
     await auditHistoryAtAllWidths(twentyResults, assertPopulatedHistory, "20-result History");
-    for (const viewport of [viewports[0], viewports[2]]) {
+    for (const viewport of viewports) {
         await setViewport(viewport);
         await evaluate("document.scrollingElement.scrollTop = 0");
-        await captureScreenshot(`history-20-top-${viewport.width}`, false);
+        if (viewport.width !== 375) {
+            await captureScreenshot(`history-20-top-${viewport.width}`, false);
+        }
         state = await pageSnapshot();
         assert(state.scrollHeight > state.clientHeight && state.list.style.overflowY === "visible" &&
             state.list.style.maxHeight === "none", `20-result History at ${viewport.width}px did not use document scrolling`);
@@ -948,7 +1137,11 @@ try {
         assert(state.scrollY > 0 && state.clear.rect.bottom <= state.clientHeight + 0.5 &&
             approximatelyEqual(state.scrollHeight - (state.shell.rect.bottom + state.scrollY), 16),
         `20-result History bottom is not reachable at ${viewport.width}px`);
-        await captureScreenshot(`history-20-bottom-${viewport.width}`, false);
+        await assertControlFocus("[data-clear-history]", viewport,
+            "20-result History bottom Clear", true);
+        if (viewport.width !== 375) {
+            await captureScreenshot(`history-20-bottom-${viewport.width}`, false);
+        }
     }
 
     assert(exceptions.length === 0, `visual scenario exposed exceptions: ${JSON.stringify(exceptions)}`);
