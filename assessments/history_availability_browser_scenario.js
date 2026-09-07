@@ -3,24 +3,32 @@ const unavailableNotice = "Saved history is unavailable in this browser.";
 const olderTimestamp = Date.parse("2026-09-06T18:00:00Z");
 const boundaryCrossingTimestamp = Date.parse("2026-09-07T00:30:00Z");
 const newestTimestamp = Date.parse("2026-09-07T08:05:00Z");
-const seededResults = [
+const singleResult = { score: 13, timestamp: boundaryCrossingTimestamp };
+const equalScoreResult = { score: 13, timestamp: boundaryCrossingTimestamp };
+const additionalResults = [
     { score: 0, timestamp: olderTimestamp },
     { score: 12, timestamp: boundaryCrossingTimestamp },
-    { score: 13, timestamp: boundaryCrossingTimestamp },
     { score: 14, timestamp: boundaryCrossingTimestamp },
     { score: 13, timestamp: boundaryCrossingTimestamp },
-    { score: 13, timestamp: boundaryCrossingTimestamp },
     { score: 24, timestamp: newestTimestamp },
+];
+const seededResults = [
+    singleResult,
+    equalScoreResult,
+    ...additionalResults,
 ];
 const expectedNewestFirstRows = [
     ["Sep 7, 2026", "1:05 AM", "24 / 24", "At or above the cutoff"],
     ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
-    ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
     ["Sep 6, 2026", "5:30 PM", "14 / 24", "At or above the cutoff"],
-    ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
     ["Sep 6, 2026", "5:30 PM", "12 / 24", "Below the cutoff"],
+    ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
+    ["Sep 6, 2026", "5:30 PM", "13 / 24", "At or above the cutoff"],
     ["Sep 6, 2026", "11:00 AM", "0 / 24", "Below the cutoff"],
 ];
+const expectedOldestFirstScores = [0, 13, 13, 12, 14, 13, 24];
+const chartExplanation =
+    "Scores are shown from oldest to newest. The horizontal line marks the cutoff score of 13.";
 
 const assert = (condition, message) => {
     if (!condition) {
@@ -296,6 +304,22 @@ const snapshot = () =>
             (notice) => notice.textContent.trim() === ${JSON.stringify(unavailableNotice)}
         );
         const resultRows = Array.from(document.querySelectorAll("[data-history-result]"));
+        const chartContainer = document.querySelector("[data-history-chart-container]");
+        const chart = document.querySelector("[data-history-chart]");
+        const cutoffLine = document.querySelector("[data-history-cutoff-line]");
+        const scoreLine = document.querySelector("[data-history-score-line]");
+        const scorePoints = Array.from(
+            document.querySelectorAll("[data-history-score-point]")
+        );
+        const chartExplanation = document.querySelector(
+            "[data-history-chart-explanation]"
+        );
+        const resultsList = document.querySelector("[data-history-results]");
+        const chartRect = chart?.getBoundingClientRect();
+        const shellRect = document.querySelector(".page-shell")?.getBoundingClientRect();
+        const chartElements = chartContainer
+            ? [chartContainer, ...chartContainer.querySelectorAll("*")]
+            : [];
         return {
             pathname: location.pathname,
             search: location.search,
@@ -330,6 +354,82 @@ const snapshot = () =>
             visibleChartCount: Array.from(
                 document.querySelectorAll("canvas, svg, [data-history-chart]")
             ).filter(isVisible).length,
+            chart: {
+                containerVisible: isVisible(chartContainer),
+                containerTag: chartContainer?.tagName.toLowerCase() ?? null,
+                appearsBeforeResults:
+                    Boolean(chartContainer && resultsList) &&
+                    Boolean(
+                        chartContainer.compareDocumentPosition(resultsList) &
+                        Node.DOCUMENT_POSITION_FOLLOWING
+                    ),
+                heading: chartContainer?.querySelector("h2")?.textContent.trim() ?? null,
+                headingVisible: isVisible(chartContainer?.querySelector("h2")),
+                explanation: chartExplanation?.textContent.trim() ?? null,
+                explanationVisible: isVisible(chartExplanation),
+                svgVisible: isVisible(chart),
+                namespace: chart?.namespaceURI ?? null,
+                role: chart?.getAttribute("role") ?? null,
+                accessibleName: chart?.getAttribute("aria-label") ?? null,
+                viewBox: chart?.getAttribute("viewBox") ?? null,
+                width: chart?.getAttribute("width") ?? null,
+                preserveAspectRatio: chart?.getAttribute("preserveAspectRatio") ?? null,
+                titleCount: chart?.querySelectorAll("title").length ?? 0,
+                cutoffLineCount: chart?.querySelectorAll(
+                    "[data-history-cutoff-line]"
+                ).length ?? 0,
+                cutoff: cutoffLine ? {
+                    x1: Number(cutoffLine.getAttribute("x1")),
+                    x2: Number(cutoffLine.getAttribute("x2")),
+                    y1: Number(cutoffLine.getAttribute("y1")),
+                    y2: Number(cutoffLine.getAttribute("y2")),
+                    dash: cutoffLine.getAttribute("stroke-dasharray"),
+                } : null,
+                scoreLineCount: chart?.querySelectorAll(
+                    "[data-history-score-line]"
+                ).length ?? 0,
+                scoreLinePoints: scoreLine?.getAttribute("points") ?? null,
+                scoreLineFill: scoreLine?.getAttribute("fill") ?? null,
+                points: scorePoints.map((point) => ({
+                    x: Number(point.getAttribute("cx")),
+                    y: Number(point.getAttribute("cy")),
+                    radius: Number(point.getAttribute("r")),
+                    namespace: point.namespaceURI,
+                })),
+                interactiveCount: chartContainer?.querySelectorAll(
+                    "a, button, form, input, select, textarea, [tabindex]"
+                ).length ?? 0,
+                animationElementCount: chartContainer?.querySelectorAll(
+                    "animate, animateMotion, animateTransform, set"
+                ).length ?? 0,
+                hasEventHandler: chartElements.some((element) =>
+                    ["onclick", "onpointerdown", "onpointerup", "onmouseenter", "onfocus"]
+                        .some((name) => element[name] !== null)
+                ),
+                hasPointerCursor: chartElements.some(
+                    (element) => getComputedStyle(element).cursor === "pointer"
+                ),
+                hasTransition: chartElements.some(
+                    (element) => getComputedStyle(element).transitionDuration !== "0s"
+                ),
+                hasAnimation: chartElements.some(
+                    (element) => getComputedStyle(element).animationName !== "none"
+                ),
+                dataHooks: chartElements.flatMap((element) =>
+                    Array.from(element.attributes)
+                        .map((attribute) => attribute.name)
+                        .filter((name) => name.startsWith("data-"))
+                ),
+                html: chartContainer?.outerHTML ?? "",
+                widthPixels: chartRect?.width ?? 0,
+                heightPixels: chartRect?.height ?? 0,
+                leftPixels: chartRect?.left ?? 0,
+                rightPixels: chartRect?.right ?? 0,
+                shellLeftPixels: shellRect?.left ?? 0,
+                shellRightPixels: shellRect?.right ?? 0,
+                viewportWidth: innerWidth,
+                documentWidth: document.documentElement.scrollWidth,
+            },
             visibleClearHistoryCount: Array.from(
                 document.querySelectorAll("button, a")
             ).filter(
@@ -404,6 +504,9 @@ const assertUnavailableHistory = (state, mode) => {
     assert(state.visibleTakeTestHrefs.length === 0, `${mode}: History shows Take Test`);
     assert(state.visibleResultListCount === 0, `${mode}: History shows a result list`);
     assert(state.visibleResultRowCount === 0, `${mode}: History shows a result row`);
+    assert(!state.chart.containerVisible, `${mode}: History shows the chart figure`);
+    assert(!state.chart.headingVisible, `${mode}: History shows the chart heading`);
+    assert(!state.chart.explanationVisible, `${mode}: History shows the chart explanation`);
     assert(
         JSON.stringify(state.visibleNoticeTexts) === JSON.stringify([unavailableNotice]),
         `${mode}: History notice is missing, duplicated, or wrong`,
@@ -433,9 +536,125 @@ const assertEmptyHistory = (state) => {
     assert(state.visibleResultListCount === 0, "empty History shows a result list");
     assert(state.visibleResultRowCount === 0, "empty History shows a result row");
     assert(state.visibleChartCount === 0, "empty History shows a chart");
+    assert(!state.chart.containerVisible, "empty History shows the chart figure");
+    assert(!state.chart.headingVisible, "empty History shows the chart heading");
+    assert(!state.chart.explanationVisible, "empty History shows the chart explanation");
     assert(state.visibleClearHistoryCount === 0, "empty History shows Clear All History");
     assert(state.getResultsCalls === 1, "empty History was not read exactly once");
     assert(state.saveResultCalls === 0, "empty History performed a write probe");
+};
+
+const approximatelyEqual = (actual, expected) =>
+    Math.abs(actual - expected) < 0.001;
+
+const parsePolylinePoints = (points) =>
+    points.split(/\s+/).map((point) => point.split(",").map(Number));
+
+const assertChart = (state, scores, context) => {
+    const chart = state.chart;
+    const expectedCutoffY = 164 - (13 / 24) * 148;
+    const expectedCoordinates = scores.map((score, index) => ({
+        x:
+            scores.length === 1
+                ? 160
+                : 24 + index * (272 / (scores.length - 1)),
+        y: 164 - (score / 24) * 148,
+    }));
+    assert(state.visibleChartCount === 1, `${context}: expected one inline SVG chart`);
+    assert(chart.containerVisible, `${context}: chart figure is hidden`);
+    assert(chart.containerTag === "figure", `${context}: chart container is not a figure`);
+    assert(chart.appearsBeforeResults, `${context}: chart is not above the results list`);
+    assert(chart.headingVisible && chart.heading === "Score trend", `${context}: chart heading is wrong`);
+    assert(chart.explanationVisible, `${context}: chart explanation is hidden`);
+    assert(chart.explanation === chartExplanation, `${context}: chart explanation is wrong`);
+    assert(chart.svgVisible, `${context}: chart SVG is hidden`);
+    assert(chart.namespace === "http://www.w3.org/2000/svg", `${context}: chart is not SVG`);
+    assert(chart.role === "img", `${context}: chart role is wrong`);
+    assert(
+        chart.accessibleName === "Saved score trend from oldest to newest",
+        `${context}: chart accessible name is wrong`,
+    );
+    assert(chart.viewBox === "0 0 320 180", `${context}: chart viewBox is wrong`);
+    assert(chart.width === "100%", `${context}: chart width attribute is wrong`);
+    assert(
+        chart.preserveAspectRatio === "xMidYMid meet",
+        `${context}: chart aspect-ratio mode is wrong`,
+    );
+    assert(chart.titleCount === 0, `${context}: chart contains a tooltip title`);
+    assert(chart.cutoffLineCount === 1, `${context}: cutoff line count is wrong`);
+    assert(chart.cutoff.x1 === 24 && chart.cutoff.x2 === 296, `${context}: cutoff x bounds are wrong`);
+    assert(
+        approximatelyEqual(chart.cutoff.y1, expectedCutoffY) &&
+            approximatelyEqual(chart.cutoff.y2, expectedCutoffY),
+        `${context}: cutoff y coordinate is wrong`,
+    );
+    assert(Boolean(chart.cutoff.dash), `${context}: cutoff line is not dashed`);
+    assert(chart.scoreLineCount === 1, `${context}: score polyline count is wrong`);
+    assert(chart.scoreLineFill === "none", `${context}: score polyline is filled`);
+    assert(chart.points.length === scores.length, `${context}: score point count is wrong`);
+    for (let index = 0; index < chart.points.length; index += 1) {
+        const point = chart.points[index];
+        const expected = expectedCoordinates[index];
+        assert(approximatelyEqual(point.x, expected.x), `${context}: point ${index} x is wrong`);
+        assert(approximatelyEqual(point.y, expected.y), `${context}: point ${index} y is wrong`);
+        assert(point.radius === 3, `${context}: point ${index} radius is wrong`);
+        assert(
+            point.namespace === "http://www.w3.org/2000/svg",
+            `${context}: point ${index} was not created in the SVG namespace`,
+        );
+        assert(point.x >= 24 && point.x <= 296, `${context}: point ${index} exceeds x bounds`);
+        assert(point.y >= 16 && point.y <= 164, `${context}: point ${index} exceeds y bounds`);
+    }
+    const lineCoordinates = parsePolylinePoints(chart.scoreLinePoints);
+    assert(
+        lineCoordinates.length === expectedCoordinates.length,
+        `${context}: score polyline coordinate count is wrong`,
+    );
+    for (let index = 0; index < lineCoordinates.length; index += 1) {
+        assert(
+            approximatelyEqual(lineCoordinates[index][0], expectedCoordinates[index].x) &&
+                approximatelyEqual(lineCoordinates[index][1], expectedCoordinates[index].y),
+            `${context}: score polyline coordinate ${index} is wrong`,
+        );
+    }
+    assert(chart.interactiveCount === 0, `${context}: chart contains interactive content`);
+    assert(chart.animationElementCount === 0, `${context}: chart contains SVG animation`);
+    assert(!chart.hasEventHandler, `${context}: chart has an event handler`);
+    assert(!chart.hasPointerCursor, `${context}: chart uses a pointer cursor`);
+    assert(!chart.hasTransition, `${context}: chart has a transition`);
+    assert(!chart.hasAnimation, `${context}: chart has CSS animation`);
+    const allowedHooks = new Set([
+        "data-history-chart-container",
+        "data-history-chart",
+        "data-history-cutoff-line",
+        "data-history-score-line",
+        "data-history-score-point",
+        "data-history-chart-explanation",
+    ]);
+    assert(
+        chart.dataHooks.every((hook) => allowedHooks.has(hook)),
+        `${context}: chart exposes an unsupported data hook`,
+    );
+    for (const hook of allowedHooks) {
+        assert(chart.dataHooks.includes(hook), `${context}: chart is missing ${hook}`);
+    }
+    for (const result of seededResults) {
+        assert(!chart.html.includes(String(result.timestamp)), `${context}: chart exposes a timestamp`);
+    }
+    assert(!/answer|response/i.test(chart.html), `${context}: chart exposes answer metadata`);
+    assert(chart.widthPixels > 0 && chart.heightPixels > 0, `${context}: chart has no size`);
+    assert(
+        approximatelyEqual(chart.widthPixels / chart.heightPixels, 16 / 9),
+        `${context}: chart does not preserve its 16:9 ratio`,
+    );
+    assert(
+        chart.leftPixels >= 0 &&
+            chart.rightPixels <= chart.viewportWidth &&
+            chart.leftPixels >= chart.shellLeftPixels &&
+            chart.rightPixels <= chart.shellRightPixels,
+        `${context}: chart exceeds the viewport or page shell`,
+    );
+    assert(chart.documentWidth <= chart.viewportWidth, `${context}: chart causes horizontal overflow`);
 };
 
 const assertPopulatedHistory = async (state) => {
@@ -468,7 +687,6 @@ const assertPopulatedHistory = async (state) => {
             );
         }
     }
-    assert(state.visibleChartCount === 1, "populated History does not show one chart");
     assert(state.visibleClearHistoryCount === 0, "populated History shows Clear All History");
     assert(state.getResultsCalls === 1, "populated History was not read exactly once");
     assert(state.saveResultCalls === 0, "populated History performed a write probe");
@@ -547,9 +765,40 @@ try {
         "empty-state Take Test created a persisted history record",
     );
 
+    await evaluate(
+        `window.__issue16OriginalBoundary.saveResult(${JSON.stringify(singleResult)})`,
+    );
+    await client.send("Page.navigate", { url: historyUrl });
+    await waitForInitializedPage("/history", "History", "available");
+    state = await snapshot();
+    assertChart(state, [13], "single-result History");
+    assert(state.visibleResultRowCount === 1, "single-result History list count changed");
+    assert(
+        JSON.stringify(state.visibleResultRows[0].values) ===
+            JSON.stringify(expectedNewestFirstRows[4]),
+        "single-result History list values changed",
+    );
+    await assertSettledWithoutSideEffects("single-result History", 1);
+
+    await evaluate(
+        `window.__issue16OriginalBoundary.saveResult(${JSON.stringify(equalScoreResult)})`,
+    );
+    await client.send("Page.reload", { ignoreCache: true });
+    await waitForInitializedPage("/history", "History", "available");
+    state = await snapshot();
+    assertChart(state, [13, 13], "equal-score History");
+    assert(state.visibleResultRowCount === 2, "equal-score History list count changed");
+    assert(
+        state.visibleResultRows.every(
+            (row) => JSON.stringify(row.values) === JSON.stringify(expectedNewestFirstRows[4])
+        ),
+        "equal-score History did not preserve duplicate list rows",
+    );
+    await assertSettledWithoutSideEffects("equal-score History", 1);
+
     await evaluate(`(() => {
-        const seededResults = ${JSON.stringify(seededResults)};
-        return seededResults.map((result) =>
+        const additionalResults = ${JSON.stringify(additionalResults)};
+        return additionalResults.map((result) =>
             window.__issue16OriginalBoundary.saveResult(result)
         );
     })()`);
@@ -562,6 +811,25 @@ try {
     await waitForInitializedPage("/history", "History", "available");
     state = await snapshot();
     await assertPopulatedHistory(state);
+    assertChart(state, expectedOldestFirstScores, "populated History");
+    const chartBeforeInteraction = JSON.stringify({
+        line: state.chart.scoreLinePoints,
+        points: state.chart.points,
+        rows: state.visibleResultRows.map((row) => row.values),
+    });
+    await pointerClickElement("[data-history-chart]");
+    await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter" });
+    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter" });
+    state = await snapshot();
+    assert(
+        JSON.stringify({
+            line: state.chart.scoreLinePoints,
+            points: state.chart.points,
+            rows: state.visibleResultRows.map((row) => row.values),
+        }) === chartBeforeInteraction,
+        "chart interaction changed chart or list content",
+    );
+    assert((await evaluate("location.pathname")) === "/history", "chart interaction changed URL");
     await pointerClickElement("[data-history-result]");
     await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter" });
     await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter" });
