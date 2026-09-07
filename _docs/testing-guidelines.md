@@ -82,3 +82,16 @@ screenshots to the system temporary directory under
 ```powershell
 .\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_shared_visual_foundation_executes_in_a_real_browser -v 2
 ```
+
+The focused Questionnaire and Result visual scenario uses the same genuine
+Edge/CDP live-server boundary at 320x900, 375x900, and 768x1024. Computed-style
+and bounding-box assertions protect progress, response cards and radios,
+keyboard focus, navigation states, Result score/cutoff parity, content rhythm,
+resource containment, motion, routing regressions, and local-only behavior.
+Non-golden screenshots for human review are written under the system temporary
+directory `k6-issue21-questionnaire-result-visuals`; they are evidence rather
+than pixel-diff fixtures. Run the scenario with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test assessments.tests.QuestionnaireBrowserInteractionTests.test_questionnaire_and_result_visuals_execute_in_a_real_browser -v 2
+```

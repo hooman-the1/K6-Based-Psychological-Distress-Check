@@ -146,6 +146,77 @@ Required route wiring:
 - Result: Take test again is primary; generated resource anchors are links.
 - History: empty-state Take Test is primary; Clear All History is danger.
 
+## Questionnaire components
+
+The Questionnaire keeps one document-flow column at every width. Its page
+heading is separated from the form by 16px. The visible question count remains
+14px/1.5 muted supporting text with 8px before the progress element.
+
+The native progress element keeps its accessible label and per-question value
+with a maximum of 6. It fills the content width and is 8px high, with no border
+or shadow, a 999px radius, a disabled-background track, and a primary-color
+value. Its value changes immediately without animation or transition. The
+question `h2` follows it by 16px and retains the shared heading style.
+
+When present, the existing text-button helper follows the prompt by 12px and
+stays left-aligned. Revealed helper copy follows the control by 8px and uses the
+14px/1.5 muted supporting style. Disclosure behavior, copy, and collapsed state
+remain behavioral concerns rather than styling variants.
+
+The response fieldset has zero border and padding, with 24px before it and 24px
+after it. Its 16px/1.5, weight-600 legend has 12px before the option list. The
+five response labels form one column with a 12px gap. Each card spans the
+content width and has:
+
+- a 56px minimum height;
+- 12px padding and internal gap;
+- a 1px border using `--color-border` and an 8px radius;
+- surface background and normal text color;
+- no shadow, transform, animation, or transition.
+
+The visible native radios are 20px square, have no margin, do not shrink, and
+use `--color-primary` as their accent. The full label is the activation target.
+A selected card changes only its 1px border to `--color-primary`; every other
+card property stays identical. A card containing a keyboard-focus-visible radio
+uses the shared 3px focus outline with 2px offset. The radio remains the focused
+semantic control and its native checked indicator remains visible.
+
+Questionnaire navigation is a non-sticky flex row with 16px gap and space
+between its controls. A sole Question 1 forward action aligns to inline-end.
+Later Back and forward actions align to opposite ends. Their shared control
+variants, minimum targets, disabled state, and interaction behavior remain as
+defined above; there is no breakpoint, grid, sticky treatment, or automatic
+advance.
+
+## Result components
+
+The transient Result keeps one vertical document-flow composition at all
+widths. Its unchanged children remain ordered as heading, score, cutoff panel,
+higher-score explanation, guidance, Resources section, and retake action.
+
+The exact `S / 24` score follows the heading by 16px and uses 48px/1, weight 700,
+tabular numerals, `--color-primary`, and no wrapping. It is the sole score
+visualization; no gauge, progress element, chart, SVG, canvas, or severity band
+is added.
+
+The cutoff panel follows the score by 16px and uses 16px padding, a 1px shared
+border, an 8px radius, and the page-color background. Its status is 20px/1.3,
+weight 700. The ordinary 16px/1.5 interpretation follows by 8px. Below-13 and
+at-or-above-13 outcomes use identical colors, typography, borders, background,
+spacing, and layout; only the approved score, status, and interpretation differ.
+
+The 14px/1.5 muted higher-score explanation follows the panel by 24px. Ordinary
+body-text guidance follows by 16px with no outcome-specific treatment. The
+Resources section follows the guidance by 24px; its shared `h2` is followed by
+the four-item list after 12px. The list uses an 8px vertical gap. Shared links
+retain their exact labels, destinations, same-tab behavior, and focus treatment,
+wrap anywhere when necessary, and never expose their URLs as fallback text.
+
+The primary Take test again anchor follows the Resources section by 24px and
+retains the shared 44px target and focus/hover states. Result components add no
+diagnostic or urgency treatment, icon, illustration, asset, gradient, animation,
+tooltip, or score-dependent guidance.
+
 ## Motion and scope
 
 The default foundation has no transitions or animations on the shell, controls,
@@ -157,8 +228,7 @@ The foundation adds no logo, illustration, image, remote font or asset, advanced
 branding, dark theme, loading treatment, persistent header/navigation/footer,
 sidebar, overlay, or alternate desktop composition.
 
-Questionnaire and Result component composition, response-card/progress/score and
-resource polish are deferred to #21. History chart/list/state/Clear composition
-and final visual polish are deferred to #22. Shared styling must not alter copy,
-semantics, hooks, routes, scoring, questionnaire behavior, Result behavior,
-resource destinations, or History/storage behavior.
+History chart/list/state/Clear composition and final visual polish are deferred
+to #22. Shared and route-specific styling must not alter copy, semantics, hooks,
+routes, scoring, questionnaire behavior, Result behavior, resource destinations,
+or History/storage behavior.
